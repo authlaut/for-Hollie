@@ -191,6 +191,9 @@ export function sizeMatches(candidate, preferred, retailerSlug, category) {
   if(c===p) return true
   if(retailerSlug==='torrid' && (p==='3x'||p==='24-26'||p==='22-24') && (c==='3'||c==='3x')) return category!=='Bottoms'
   if(retailerSlug==='bloomchic' && (p==='3x'||p==='24-26'||p==='22-24') && /^(3x|22-24|24-26)$/.test(c)) return category!=='Bottoms'
+  if(retailerSlug==='universal-standard' && p==='24' && /^(24|22-24)$/.test(c)) return true
+  if(retailerSlug==='eloquii' && p==='24' && /^(24|24w)$/.test(c)) return true
+  if(retailerSlug==='glamorise' && p==='50d' && c.replace(/[- ]/g,'')==='50d') return true
   if(p==='24' && /^(24|24w)$/.test(c)) return true
   if(p==='50d' && c.replace(/[- ]/g,'')==='50d') return true
   if((p==='9'||p==='9.0') && c==='9') return true
