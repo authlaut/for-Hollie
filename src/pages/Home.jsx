@@ -13,16 +13,25 @@ const hotDeal = {
   reason: 'High-priority layer',
   badge: 'Exceptional',
   level: 'exceptional',
-  image: 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=800&q=80'
+  image: '/placeholders/layers.svg',
+  category: 'Layers',
+  demo: true
+}
+
+function greeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
 }
 
 export default function Home() {
   return (
     <main className="page">
-      <Header title="Good evening" subtitle="A smarter wardrobe, just for Hollie." />
+      <Header title={greeting()} subtitle="A smarter wardrobe, just for Hollie." />
       <section className="update-strip">
-        <div><Clock3 size={16}/><strong>Last updated:</strong> Today, 7:42 PM</div>
-        <span>Next scan ~10:45 PM</span>
+        <div><Clock3 size={16}/><strong>Last updated:</strong> Not scanned yet</div>
+        <span>Next scan pending setup</span>
       </section>
 
       <section className="hero-card">
@@ -37,15 +46,15 @@ export default function Home() {
       <section className="section">
         <div className="section-head"><h2>Today at a glance</h2></div>
         <div className="stats-grid">
-          <div className="stat-card"><strong>47</strong><span>Qualifying deals</span></div>
-          <div className="stat-card"><strong>12</strong><span>New today</span></div>
-          <div className="stat-card"><strong>6</strong><span>Price drops</span></div>
-          <div className="stat-card accent"><strong>3</strong><span>Exceptional</span></div>
+          <div className="stat-card"><strong>—</strong><span>Qualifying deals</span></div>
+          <div className="stat-card"><strong>—</strong><span>New today</span></div>
+          <div className="stat-card"><strong>—</strong><span>Price drops</span></div>
+          <div className="stat-card accent"><strong>—</strong><span>Exceptional</span></div>
         </div>
       </section>
 
       <section className="section">
-        <div className="section-head"><h2>Hot deal for Hollie</h2><span className="section-link">See all <ChevronRight size={16}/></span></div>
+        <div className="section-head"><h2>Sample deal card</h2><span className="section-link">Demo only <ChevronRight size={16}/></span></div>
         <DealCard deal={hotDeal} />
       </section>
 
