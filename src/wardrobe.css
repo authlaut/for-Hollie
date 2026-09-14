@@ -1,0 +1,28 @@
+/* For Hollie — real wardrobe + add-item flow */
+.wardrobe-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 14px}
+.wardrobe-summary>div{background:#171821;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px 10px}
+.wardrobe-summary strong{display:block;font-family:Georgia,serif;font-size:22px}
+.wardrobe-summary span{display:block;color:#928d97;font-size:10px;margin-top:3px}
+.wardrobe-add-btn{width:max-content;text-decoration:none;margin-top:4px}
+.wardrobe-image-wrap{position:relative;aspect-ratio:1/1.1;background:#191a23}
+.wardrobe-image-wrap>img{width:100%;height:100%;object-fit:cover;display:block}
+.wardrobe-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;background:radial-gradient(circle at 70% 20%,rgba(194,73,120,.17),transparent 34%),linear-gradient(145deg,#211821,#14151d);color:#b78da0;text-transform:uppercase;letter-spacing:.12em;font-size:10px}
+.owned-status{position:absolute;left:9px;bottom:9px;display:flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.11);background:rgba(15,16,24,.85);backdrop-filter:blur(8px);color:#d9d2d8;padding:5px 7px;border-radius:999px;font-size:9px}
+.owned-status.on_the_way{color:#efb3c6;border-color:rgba(216,117,153,.35)}
+.wardrobe-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.wardrobe-meta span{font-size:9px;color:#aaa4ad;border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:4px 7px}
+.item-source-link{display:inline-block;margin-top:9px;color:#e18ba7;font-size:10px}
+.add-item-page{padding-bottom:120px}
+.back-link{border:0;background:transparent;color:#c8bdc4;display:flex;align-items:center;gap:6px;padding:4px 0 13px}
+.item-form{display:grid;gap:12px}
+.form-card{background:#171821;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:15px}
+.form-card h2{font-family:Georgia,serif;font-size:17px;font-weight:500;margin:0 0 14px}
+.item-form label{display:grid;gap:6px;color:#bab3bb;font-size:10px;margin-bottom:11px}
+.item-form input,.item-form select,.item-form textarea{width:100%;background:#0f1018;border:1px solid rgba(255,255,255,.09);color:#f5f0f4;border-radius:11px;padding:11px;outline:none}
+.item-form textarea{min-height:88px;resize:vertical}
+.item-form input:focus,.item-form select:focus,.item-form textarea:focus{border-color:rgba(224,138,165,.45)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field-label{display:flex;align-items:center;gap:5px}
+.form-help{font-size:10px;color:#817b84;margin:0}
+.save-item-btn{width:100%;padding:13px}
+@media(max-width:560px){.form-grid{grid-template-columns:1fr}.wardrobe-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.wardrobe-body h3{font-size:14px}}

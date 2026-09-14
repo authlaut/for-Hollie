@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import Home from './pages/Home'
 import Deals from './pages/Deals'
 import Wardrobe from './pages/Wardrobe'
+import AddWardrobeItem from './pages/AddWardrobeItem'
 import Outfits from './pages/Outfits'
 import Watchlist from './pages/Watchlist'
 import Settings from './pages/Settings'
@@ -16,6 +17,7 @@ function Shell() {
         <Route path="/" element={<Home/>}/>
         <Route path="/deals" element={<Deals/>}/>
         <Route path="/wardrobe" element={<Wardrobe/>}/>
+        <Route path="/wardrobe/add" element={<AddWardrobeItem/>}/>
         <Route path="/outfits" element={<Outfits/>}/>
         <Route path="/watchlist" element={<Watchlist/>}/>
         <Route path="/settings" element={<Settings/>}/>
@@ -29,8 +31,6 @@ function Shell() {
 export default function App() {
   const { session, loading, supabaseConfigured } = useAuth()
   if (loading) return <div className="loading-screen">For Hollie</div>
-
-  // Demo shell remains visible before Supabase is configured so Vercel can be tested immediately.
   if (!supabaseConfigured) return <Shell />
   if (!session) return <Login />
   return <Shell />
