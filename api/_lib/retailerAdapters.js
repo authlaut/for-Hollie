@@ -15,9 +15,68 @@ const stockBool = v => {
 }
 const plausibleSize = v => {
   const s = clean(v)
-  if (!s || s.length > 24) return false
-  return /^(?:00|0|[1-6]|[1-6]X|[1-6]XL|XS|S|M|L|XL|2XL|3XL|4XL|5XL|6XL|[0-9]{1,2}(?:\.[05])?|[0-9]{1,2}[A-H]|(?:10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40)W?|(?:00-0|2-4|6-8|10-12|14-16|18-20|22-24|24-26|26-28|30-32|34-36|38-40))$/i.test(s)
+  if (!s || s.length > 28) return false
+  const compact=s.replace(/\s+/g,'').replace(/[–—]/g,'-')
+  return /^(?:00|0|[1-6]|[1-6]X|[1-6]XL|4XS|3XS|2XS|XS|S|M|L|XL|2XL|3XL|4XL|5XL|6XL|[0-9]{1,2}(?:\.[05])?|[0-9]{2}(?:[A-H]|AA|DD|DDD|F|G|H)|(?:10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40)W?|(?:00-0|2-4|6-8|10-12|14-16|18-20|20-24|22-24|24-26|26-28|30-32|34-36|38-40))$/i.test(compact)
 }
+
+const normalizedSize = v => clean(v).replace(/&nbsp;/gi,' ').replace(/\s+/g,' ').trim()
+
+function htmlDecode(s=''){return String(s).replace(/&amp;/g,'&').replace(/&quot;/g,'\"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>')}
+
+function sizeControlEvidence(html){
+  const found=[]
+  const push=(size,inStock,source)=>{size=normalizedSize(htmlDecode(size));if(plausibleSize(size))found.push({size,inStock,source})}
+
+  // Select menus whose name/id/class clearly indicates sizing. An enabled option is selectable.
+  const selectRe=/<select\b([^>]*)>([\s\S]*?)<\/select>/gi; let sm
+  while((sm=selectRe.exec(html))){
+    const attrs=sm[1]||''; if(!/size/i.test(attrs))continue
+    const body=sm[2]||''; const optionRe=/<option\b([^>]*)>([\s\S]*?)<\/option>/gi; let om
+    while((om=optionRe.exec(body))){
+      const oa=om[1]||''; const text=om[2].replace(/<[^>]+>/g,' ').trim(); const val=(oa.match(/\bvalue=["']([^"']+)["']/i)||[])[1]
+      const size=(text && !/select|choose|size/i.test(text))?text:val
+      if(!size)continue
+      const disabled=/\bdisabled\b|aria-disabled=["']true["']|sold.?out|unavailable|out.?of.?stock/i.test(oa+' '+text)
+      push(size,!disabled,'select-option')
+    }
+  }
+
+  // Buttons/labels/inputs used by modern variant pickers.
+  const tagRe=/<(button|label|input)\b([^>]*?(?:size|swatch|variant)[^>]*)>([\s\S]*?)(?:<\/\1>)?/gi; let tm
+  while((tm=tagRe.exec(html))){
+    const attrs=tm[2]||''; const body=(tm[3]||'').replace(/<[^>]+>/g,' ').trim()
+    const candidates=[
+      (attrs.match(/data-(?:size|value|option-value)=["']([^"']+)["']/i)||[])[1],
+      (attrs.match(/(?:aria-label|title)=["'](?:size\s*)?([^"']+)["']/i)||[])[1],
+      (attrs.match(/\bvalue=["']([^"']+)["']/i)||[])[1],
+      body
+    ].filter(Boolean)
+    const size=candidates.find(plausibleSize); if(!size)continue
+    const disabled=/\bdisabled\b|aria-disabled=["']true["']|sold.?out|unavailable|out.?of.?stock|is-disabled|disabled-option/i.test(attrs+' '+body)
+    push(size,!disabled,'size-control')
+  }
+
+  // Common data attributes even when the element class does not contain the word size.
+  const attrRe=/<[^>]+\bdata-(?:size|size-value)=["']([^"']+)["'][^>]*>/gi; let am
+  while((am=attrRe.exec(html))){const tag=am[0];const disabled=/disabled|sold.?out|unavailable|out.?of.?stock/i.test(tag);push(am[1],!disabled,'data-size')}
+
+  const map=new Map()
+  for(const x of found){const k=normalizedSize(x.size).toLowerCase(); const old=map.get(k); if(!old || old.inStock!==true)map.set(k,x)}
+  return [...map.values()]
+}
+
+function enrichWithControlStock(variants, html){
+  const controls=sizeControlEvidence(html)
+  if(!controls.length)return variants
+  const norm=v=>normalizedSize(v).toLowerCase().replace(/\s+/g,'')
+  return variants.map(v=>{
+    if(v.inStock===true || v.inStock===false)return v
+    const hit=controls.find(c=>norm(c.size)===norm(v.size))
+    return hit?{...v,inStock:hit.inStock,stockSource:hit.source}:v
+  })
+}
+
 
 function mergeVariants(primary=[], secondary=[]){
   const out=[]; const seen=new Set()
@@ -56,14 +115,15 @@ function parseShopify(data, parsed){
   if(!data || !Array.isArray(data.variants)) return []
   const optionNames=(data.options||[]).map(x=>typeof x==='string'?x:(x?.name||''))
   let sizeIndex=optionNames.findIndex(x=>/size/i.test(x))
-  if(sizeIndex < 0){
-    // Most one-option apparel products use option1 for size.
-    sizeIndex=0
-  }
+  const bandIndex=optionNames.findIndex(x=>/band/i.test(x))
+  const cupIndex=optionNames.findIndex(x=>/cup/i.test(x))
   let colorIndex=optionNames.findIndex(x=>/colou?r/i.test(x))
   return data.variants.map(v=>{
-    const opts=[v.option1,v.option2,v.option3]
-    const size=opts[sizeIndex] ?? v.title
+    const opts=[v.option1,v.option2,v.option3].map(clean)
+    let size
+    if(bandIndex>=0 && cupIndex>=0 && opts[bandIndex] && opts[cupIndex]) size=`${opts[bandIndex]}${opts[cupIndex]}`
+    else if(sizeIndex>=0) size=opts[sizeIndex]
+    else size=opts.find(plausibleSize) || v.title
     const color=colorIndex>=0 ? opts[colorIndex] : parsed?.color
     const rawPrice = money(v.price)
     const rawCompare = money(v.compare_at_price)
@@ -154,6 +214,9 @@ export async function retailerVariants(retailerSlug, page, parsed){
     variants=mergeVariants(variants,embedded)
     if(source==='generic') source='embedded-product-state'
   }
+
+  variants=enrichWithControlStock(variants,page.html)
+  if(variants.some(v=>v.stockSource) && source==='generic')source='selectable-size-controls'
 
   return {variants, source, count:variants.length}
 }

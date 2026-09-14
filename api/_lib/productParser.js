@@ -191,8 +191,12 @@ export function sizeMatches(candidate, preferred, retailerSlug, category) {
   if(c===p) return true
   if(retailerSlug==='torrid' && (p==='3x'||p==='24-26'||p==='22-24') && (c==='3'||c==='3x')) return category!=='Bottoms'
   if(retailerSlug==='bloomchic' && (p==='3x'||p==='24-26'||p==='22-24') && /^(3x|22-24|24-26)$/.test(c)) return category!=='Bottoms'
-  if(retailerSlug==='universal-standard' && p==='24' && /^(24|22-24)$/.test(c)) return true
-  if(retailerSlug==='eloquii' && p==='24' && /^(24|24w)$/.test(c)) return true
+  // Universal Standard's published conversion maps conventional 24 to L and 26 to XL.
+  if(retailerSlug==='universal-standard' && p==='24' && /^(24|l)$/.test(c)) return true
+  if(retailerSlug==='universal-standard' && /^(3x|24-26(?:\/torrid3)?)$/.test(p) && /^(l|xl)$/.test(c)) return true
+  // ELOQUII uses both numeric 24/24W and grouped 22/24 sizing depending on the product.
+  if(retailerSlug==='eloquii' && p==='24' && /^(24|24w|22\/24|22-24)$/.test(c)) return true
+  if(retailerSlug==='eloquii' && /^(3x|24-26(?:\/torrid3)?)$/.test(p) && /^(22\/24|22-24|24|24w)$/.test(c)) return true
   if(retailerSlug==='glamorise' && p==='50d' && c.replace(/[- ]/g,'')==='50d') return true
   if(p==='24' && /^(24|24w)$/.test(c)) return true
   if(p==='50d' && c.replace(/[- ]/g,'')==='50d') return true
