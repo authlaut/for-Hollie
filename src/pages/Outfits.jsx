@@ -1,21 +1,7 @@
-import { Sparkles, CloudSun, Shirt, ShoppingBag } from 'lucide-react'
-import Header from '../components/Header'
-
-export default function Outfits() {
-  return (
-    <main className="page">
-      <Header title="Outfits" subtitle="Style what she owns—or complete the look with live deals." />
-      <div className="segmented"><button className="selected">Owned Only</button><button>Mixed</button></div>
-      <div className="weather-card"><CloudSun/><div><strong>Season-aware styling</strong><span>Weather can nudge suggestions without taking over.</span></div></div>
-      <div className="occasion-grid">
-        {['Everyday','Church','Date Night','Errands','Gym','Lounge','Special Occasion'].map(x=><button key={x}>{x}</button>)}
-      </div>
-      <section className="outfit-feature">
-        <div className="outfit-copy"><span className="kicker">3 WAYS TO WEAR</span><h2>Navy polished blouse</h2><p>Church, casual and dinner ideas—built from owned pieces first.</p><button className="primary-btn"><Sparkles size={17}/> Generate ideas</button></div>
-        <div className="outfit-tiles">
-          <div><Shirt/>Owned</div><div><ShoppingBag/>Owned</div><div className="deal-tile"><Sparkles/>Live deal</div>
-        </div>
-      </section>
-    </main>
-  )
-}
+import { useEffect, useMemo, useState } from 'react'; import { Sparkles, Shirt, ShoppingBag, Save, RefreshCw } from 'lucide-react'; import Header from '../components/Header'; import { supabase } from '../lib/supabase'; import { useAuth } from '../context/AuthContext'; import { loadLiveDeals } from '../lib/deals'
+const occs=['Everyday','Church','Date Night','Errands','Gym','Lounge','Special Occasion']; const roles=[['top','Tops'],['bottom','Bottoms'],['dress','Dresses'],['layer','Layers'],['shoe','Shoes'],['bag','Accessories']]
+export default function Outfits(){const{session}=useAuth();const[mode,setMode]=useState('owned'),[occasion,setOccasion]=useState('Everyday'),[owned,setOwned]=useState([]),[deals,setDeals]=useState([]),[look,setLook]=useState([]),[msg,setMsg]=useState(''),[profileId,setProfileId]=useState(null)
+ useEffect(()=>{(async()=>{if(!session?.user?.id)return;const[{data:w},{data:p},{deals}]=await Promise.all([supabase.from('fh_wardrobe_items').select('id,custom_name,image_url,category,subcategory,color,status').eq('owner_user_id',session.user.id).in('status',['owned']),supabase.from('fh_profiles').select('id').eq('owner_user_id',session.user.id).single(),loadLiveDeals(session.user.id)]);setOwned(w||[]);setProfileId(p?.id||null);setDeals(deals||[])})()},[session?.user?.id])
+ const generate=()=>{setMsg('');const pool=[...owned.map(x=>({...x,source:'owned'})),...(mode==='mixed'?deals.map(d=>({id:d.id,custom_name:d.name,image_url:d.image,category:d.category,source:'deal',dealId:d.id})):[])];const pick=c=>pool.filter(x=>x.category===c)[Math.floor(Math.random()*Math.max(1,pool.filter(x=>x.category===c).length))];let selected=[];const dress=pick('Dresses');if((occasion==='Church'||occasion==='Date Night'||occasion==='Special Occasion')&&dress)selected.push({...dress,role:'dress'});else{const top=pick('Tops'),bottom=pick('Bottoms');if(top)selected.push({...top,role:'top'});if(bottom)selected.push({...bottom,role:'bottom'})}const layer=pick('Layers'),shoe=pick('Shoes'),bag=pick('Accessories');if(layer)selected.push({...layer,role:'layer'});if(shoe)selected.push({...shoe,role:'shoe'});if(bag)selected.push({...bag,role:'bag'});if(selected.length<2)setMsg('Add more wardrobe pieces (especially bottoms/shoes) before the builder can make a complete outfit.');setLook(selected)}
+ const save=async()=>{if(!look.length||!profileId)return;const{data:o,error}=await supabase.from('fh_outfits').insert({owner_user_id:session.user.id,profile_id:profileId,name:`${occasion} outfit`,occasion,owned_only:mode==='owned',ai_generated:false,saved:true}).select('id').single();if(error){setMsg(error.message);return}const items=look.map((x,i)=>({owner_user_id:session.user.id,outfit_id:o.id,wardrobe_item_id:x.source==='owned'?x.id:null,deal_id:x.source==='deal'?x.dealId:null,role:x.role,sort_order:i}));const{error:e}=await supabase.from('fh_outfit_items').insert(items);setMsg(e?e.message:'Outfit saved.')}
+ return <main className="page"><Header title="Outfits" subtitle="Style what she owns—or complete the look with live deals."/><div className="segmented"><button className={mode==='owned'?'selected':''} onClick={()=>setMode('owned')}>Owned Only</button><button className={mode==='mixed'?'selected':''} onClick={()=>setMode('mixed')}>Mixed</button></div><div className="occasion-grid">{occs.map(x=><button className={occasion===x?'selected':''} onClick={()=>setOccasion(x)} key={x}>{x}</button>)}</div><section className="outfit-feature"><div className="outfit-copy"><span className="kicker">OUTFIT BUILDER</span><h2>{occasion}</h2><p>{mode==='owned'?'Uses Hollie’s tracked wardrobe only.':'Uses owned pieces plus verified live deals to fill gaps.'}</p><div className="card-actions"><button className="primary-btn" onClick={generate}><RefreshCw size={16}/> Generate</button>{look.length>0&&<button className="secondary-btn" onClick={save}><Save size={16}/> Save</button>}</div>{msg&&<div className="status-note">{msg}</div>}</div><div className="outfit-tiles">{look.length?look.map((x,i)=><div key={`${x.id}-${i}`}>{x.source==='owned'?<Shirt/>:<ShoppingBag/>}<span><strong>{x.role}</strong>{x.custom_name}</span></div>):<div><Sparkles/>Generate a real outfit</div>}</div></section></main>}

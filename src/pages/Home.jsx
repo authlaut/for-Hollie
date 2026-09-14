@@ -1,71 +1,34 @@
-import { Clock3, TrendingDown, Shirt, Sparkles, ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Clock3, Shirt, Sparkles, Tags } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import Header from '../components/Header'
 import DealCard from '../components/DealCard'
+import { useAuth } from '../context/AuthContext'
+import { supabase, supabaseConfigured } from '../lib/supabase'
+import { loadLiveDeals, formatScanTime } from '../lib/deals'
 
-const hotDeal = {
-  store: 'Torrid',
-  name: 'Soft Knit Cardigan',
-  regular: 69.90,
-  sale: 16.99,
-  discount: 76,
-  size: 'Size 3',
-  match: 94,
-  reason: 'High-priority layer',
-  badge: 'Exceptional',
-  level: 'exceptional',
-  image: '/placeholders/layers.svg',
-  category: 'Layers',
-  demo: true
-}
+function greeting(){const h=new Date().getHours();return h<12?'Good morning':h<17?'Good afternoon':'Good evening'}
 
-function greeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  return 'Good evening'
-}
-
-export default function Home() {
-  return (
-    <main className="page">
-      <Header title={greeting()} subtitle="A smarter wardrobe, just for Hollie." />
-      <section className="update-strip">
-        <div><Clock3 size={16}/><strong>Last updated:</strong> Not scanned yet</div>
-        <span>Next scan pending setup</span>
-      </section>
-
-      <section className="hero-card">
-        <div>
-          <div className="kicker">FOR HOLLIE</div>
-          <h2>Beautiful finds.<br/><span>Exceptional prices.</span></h2>
-          <p>Deal quality first, wardrobe need second, style match third.</p>
-        </div>
-        <div className="hero-orb">FH</div>
-      </section>
-
-      <section className="section">
-        <div className="section-head"><h2>Today at a glance</h2></div>
-        <div className="stats-grid">
-          <div className="stat-card"><strong>—</strong><span>Qualifying deals</span></div>
-          <div className="stat-card"><strong>—</strong><span>New today</span></div>
-          <div className="stat-card"><strong>—</strong><span>Price drops</span></div>
-          <div className="stat-card accent"><strong>—</strong><span>Exceptional</span></div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-head"><h2>Sample deal card</h2><span className="section-link">Demo only <ChevronRight size={16}/></span></div>
-        <DealCard deal={hotDeal} />
-      </section>
-
-      <section className="section">
-        <div className="section-head"><h2>Wardrobe gaps</h2></div>
-        <div className="gap-list">
-          <div className="gap-card"><Shirt/><div><strong>Neutral cardigans</strong><span>0 / 2 · High priority</span></div><div className="progress"><i style={{width:'8%'}}/></div></div>
-          <div className="gap-card"><TrendingDown/><div><strong>Black / neutral pants</strong><span>0 known · High priority</span></div><div className="progress"><i style={{width:'6%'}}/></div></div>
-          <div className="gap-card"><Sparkles/><div><strong>Everyday tops</strong><span>2 / 10–14 · High priority</span></div><div className="progress"><i style={{width:'18%'}}/></div></div>
-        </div>
-      </section>
-    </main>
-  )
+export default function Home(){
+ const {session}=useAuth(); const [deals,setDeals]=useState([]); const [lastScan,setLastScan]=useState(null); const [items,setItems]=useState([]); const [targets,setTargets]=useState([]); const [loading,setLoading]=useState(true)
+ useEffect(()=>{(async()=>{if(!supabaseConfigured||!session?.user?.id){setLoading(false);return}
+   const [{deals,lastScan},{data:w},{data:t}] = await Promise.all([
+     loadLiveDeals(session.user.id),
+     supabase.from('fh_wardrobe_items').select('category,subcategory,status').eq('owner_user_id',session.user.id).in('status',['owned','on_the_way']),
+     supabase.from('fh_wardrobe_targets').select('id,category,subcategory,target_min,target_max,priority').eq('owner_user_id',session.user.id)
+   ])
+   setDeals(deals);setLastScan(lastScan);setItems(w||[]);setTargets(t||[]);setLoading(false)
+ })()},[session?.user?.id])
+ const gaps=useMemo(()=>targets.map(t=>{const count=items.filter(i=>i.category===t.category && (!t.subcategory||i.subcategory===t.subcategory)).length; return {...t,count}}).filter(x=>x.priority==='high_priority' || x.priority==='needed').sort((a,b)=>(a.count/(a.target_min||1))-(b.count/(b.target_min||1))).slice(0,3),[targets,items])
+ const exceptional=deals.filter(d=>d.badge==='Exceptional').length; const newCount=deals.filter(d=>d.newDeal).length; const top=[...deals].sort((a,b)=>(b.match||0)-(a.match||0)||b.discount-a.discount)[0]
+ return <main className="page">
+   <Header title={greeting()} subtitle="A smarter wardrobe, just for Hollie."/>
+   <section className="update-strip"><div><Clock3 size={16}/><strong>Last updated:</strong> {formatScanTime(lastScan)}</div><span>{lastScan?'Live retailer data':'Scanner not connected yet'}</span></section>
+   <section className="hero-card"><div><div className="kicker">FOR HOLLIE</div><h2>Beautiful finds.<br/><span>Exceptional prices.</span></h2><p>Deal quality first, wardrobe need second, style match third.</p></div><div className="hero-orb">FH</div></section>
+   <section className="section"><div className="section-head"><h2>Today at a glance</h2></div><div className="stats-grid">
+     <div className="stat-card"><strong>{loading?'—':deals.length}</strong><span>Qualifying deals</span></div><div className="stat-card"><strong>{loading?'—':newCount}</strong><span>New today</span></div><div className="stat-card"><strong>{loading?'—':items.length}</strong><span>Tracked wardrobe</span></div><div className="stat-card accent"><strong>{loading?'—':exceptional}</strong><span>Exceptional</span></div>
+   </div></section>
+   <section className="section"><div className="section-head"><h2>{top?'Hot deal for Hollie':'Deals'}</h2><Link to="/deals" className="section-link">See deals ›</Link></div>{top?<DealCard deal={top}/>:<div className="empty-panel"><Tags size={24}/><h3>No verified live deals yet</h3><p>Once retailer monitoring writes verified products to Supabase, they will appear here automatically.</p><Link to="/deals" className="secondary-btn">Open Deals</Link></div>}</section>
+   <section className="section"><div className="section-head"><h2>Wardrobe gaps</h2></div>{gaps.length?<div className="gap-list">{gaps.map(g=><div className="gap-card" key={g.id}><Shirt/><div><strong>{g.subcategory||g.category}</strong><span>{g.count} / {g.target_min}{g.target_max&&g.target_max!==g.target_min?`–${g.target_max}`:''} · {g.priority.replace('_',' ')}</span></div><div className="progress"><i style={{width:`${Math.min(100,(g.count/(g.target_min||1))*100)}%`}}/></div></div>)}</div>:<div className="empty-panel"><Sparkles size={22}/><h3>Wardrobe targets ready for setup</h3><p>Targets will drive deal ranking as the wardrobe grows.</p></div>}</section>
+ </main>
 }

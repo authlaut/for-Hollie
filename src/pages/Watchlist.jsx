@@ -1,27 +1,3 @@
-import { BellRing, Heart, RotateCcw, Tag } from 'lucide-react'
-import Header from '../components/Header'
-
-export default function Watchlist() {
-  return (
-    <main className="page">
-      <Header title="Watchlist" subtitle="Price drops, restocks and target-price alerts." />
-      <div className="watch-card">
-        <div className="watch-icon"><Heart/></div>
-        <div className="watch-content">
-          <span className="eyebrow">GLAMORISE</span>
-          <h3>No-Bounce Camisole Sports Bra</h3>
-          <p>Different color · 50D</p>
-          <div className="watch-details">
-            <span><Tag size={15}/> Target ≤ $25</span>
-            <span><BellRing size={15}/> Restock + price alerts</span>
-            <span><RotateCcw size={15}/> Useful duplicate allowed</span>
-          </div>
-        </div>
-      </div>
-      <div className="empty-panel">
-        <h3>Watch what matters</h3>
-        <p>Save products for a lower price, a specific color, or Hollie's exact size returning to stock.</p>
-      </div>
-    </main>
-  )
-}
+import { useEffect, useState } from 'react'; import { BellRing, Heart, Tag, Trash2, ExternalLink, ImageOff } from 'lucide-react'; import Header from '../components/Header'; import { supabase } from '../lib/supabase'; import { useAuth } from '../context/AuthContext'
+function WatchImage({src,name}){const[bad,setBad]=useState(false);return src&&!bad?<img className="watch-thumb" src={src} alt={name||''} onError={()=>setBad(true)}/>:<div className="watch-icon"><ImageOff size={20}/></div>}
+export default function Watchlist(){const{session}=useAuth();const[rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState('');const load=async()=>{const{data,error}=await supabase.from('fh_watchlist').select(`id,watch_price,watch_size,watch_color,price_drop_alert,restock_alert,lowest_price_alert,product:fh_products(id,product_name,canonical_url,primary_image_url,color_name,retailer:fh_retailers(name)),variant:fh_product_variants(size,color)`).eq('owner_user_id',session.user.id).eq('active',true).order('created_at',{ascending:false});if(error)setError(error.message);else setRows(data||[]);setLoading(false)};useEffect(()=>{if(session?.user?.id)load()},[session?.user?.id]);const remove=async id=>{await supabase.from('fh_watchlist').update({active:false}).eq('id',id).eq('owner_user_id',session.user.id);setRows(p=>p.filter(x=>x.id!==id))};return <main className="page"><Header title="Watchlist" subtitle="Price drops, restocks and target-price alerts."/>{loading&&<div className="empty-panel">Loading watchlist…</div>}{error&&<div className="error-note">{error}</div>}{!loading&&!error&&rows.length===0&&<div className="empty-panel"><Heart size={26}/><h3>Nothing watched yet</h3><p>Tap the heart on any live deal to watch its price and size.</p></div>}<div className="watch-list">{rows.map(r=><article className="watch-card" key={r.id}><WatchImage src={r.product?.primary_image_url} name={r.product?.product_name}/><div className="watch-content"><span className="eyebrow">{r.product?.retailer?.name||'Retailer'}</span><h3>{r.product?.product_name||'Watched item'}</h3><p>{[r.watch_color||r.variant?.color,r.watch_size||r.variant?.size].filter(Boolean).join(' · ')}</p><div className="watch-details">{r.watch_price!=null&&<span><Tag size={15}/> Target ≤ ${Number(r.watch_price).toFixed(2)}</span>}{r.restock_alert&&<span><BellRing size={15}/> Restock alert on</span>}</div><div className="card-actions">{r.product?.canonical_url&&<a className="mini-btn" href={r.product.canonical_url} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Retailer</a>}<button className="mini-btn" onClick={()=>remove(r.id)}><Trash2 size={14}/> Remove</button></div></div></article>)}</div></main>}
