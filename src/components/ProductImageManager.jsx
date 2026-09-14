@@ -1,0 +1,11 @@
+import { useRef, useState } from 'react'
+import { Download, Upload, Image as ImageIcon, Check } from 'lucide-react'
+import { importProductUrl, uploadWardrobeImage } from '../lib/productImport'
+
+export default function ProductImageManager({userId, productUrl, onImported, imageUrl, gallery=[], onImageChange, onGalleryChange}){
+  const input=useRef(); const[busy,setBusy]=useState(false); const[msg,setMsg]=useState('')
+  const importUrl=async()=>{if(!productUrl)return setMsg('Paste the retailer product URL first.');setBusy(true);setMsg('Importing product details and images…');try{const d=await importProductUrl(productUrl);onImported?.(d);const imgs=d.images||[];onGalleryChange?.(imgs);if(imgs[0])onImageChange?.(imgs[0]);setMsg(imgs.length?`Imported ${imgs.length} product image${imgs.length===1?'':'s'}.`:'Product found, but no usable image was exposed by the retailer.')}catch(e){setMsg(e.message)}finally{setBusy(false)}}
+  const upload=async e=>{const file=e.target.files?.[0];if(!file)return;setBusy(true);setMsg('Uploading image…');try{const url=await uploadWardrobeImage(file,userId);const imgs=[url,...gallery.filter(x=>x!==url)];onGalleryChange?.(imgs);onImageChange?.(url);setMsg('Image uploaded.')}catch(e){setMsg(e.message)}finally{setBusy(false);e.target.value=''}}
+  const images=[...new Set([imageUrl,...gallery].filter(Boolean))]
+  return <div className="product-image-manager"><div className="image-action-row"><button type="button" className="secondary-btn" onClick={importUrl} disabled={busy}><Download size={15}/> Import from Product URL</button><button type="button" className="secondary-btn" onClick={()=>input.current?.click()} disabled={busy}><Upload size={15}/> Upload Image</button><input ref={input} hidden type="file" accept="image/*" onChange={upload}/></div>{msg&&<p className="form-help">{msg}</p>}{images.length>0?<div className="image-picker-grid">{images.map(img=><button type="button" key={img} className={`image-choice ${img===imageUrl?'selected':''}`} onClick={()=>onImageChange?.(img)}><img src={img} alt="Product"/>{img===imageUrl&&<span><Check size={13}/> Primary</span>}</button>)}</div>:<div className="image-empty"><ImageIcon size={22}/> No product image yet</div>}</div>
+}

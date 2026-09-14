@@ -1,0 +1,12 @@
+name: For Hollie retailer scan
+on:
+  schedule:
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger retailer scanner
+        run: |
+          curl --fail --retry 2 -H "Authorization: Bearer ${{ secrets.FOR_HOLLIE_CRON_SECRET }}" "${{ secrets.FOR_HOLLIE_SCAN_URL }}/api/scan-retailers"
