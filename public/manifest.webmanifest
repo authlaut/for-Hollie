@@ -1,0 +1,17 @@
+{
+  "name": "For Hollie",
+  "short_name": "For Hollie",
+  "description": "Personalized wardrobe, deal and outfit intelligence for Hollie.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1018",
+  "theme_color": "#0f1018",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
