@@ -1,5 +1,8 @@
 {
   "crons": [
     { "path": "/api/scan-retailers", "schedule": "17 13 * * *" }
+  ],
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
