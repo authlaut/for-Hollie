@@ -59,6 +59,35 @@ function discountPct(sale,regular){return sale&&regular&&regular>sale?Math.round
 function qualifies(sale,regular,category){const d=discountPct(sale,regular);const caps={Tops:25,Layers:30,Bottoms:35,Dresses:40,Intimates:30,Lounge:25,Shoes:40,Active:30,Swim:30,Accessories:30};return d>=50 || (d>=40 && sale<=(caps[category]||30))}
 function quality(d){return d>=70?'exceptional':d>=55?'strong_buy':d>=40?'good_deal':'wildcard'}
 
+function validMarkdown(sale,regular){
+  sale=Number(sale); regular=Number(regular)
+  return Number.isFinite(sale)&&Number.isFinite(regular)&&sale>0&&regular>sale
+}
+
+function resolveVariantPricing(v,p){
+  const vp=Number(v?.price), vr=Number(v?.regularPrice)
+  const pp=Number(p?.currentPrice), pr=Number(p?.regularPrice)
+
+  // Prefer a real variant-level markdown when the retailer exposes one.
+  if(validMarkdown(vp,vr)) return {sale:vp,regular:vr,source:'variant'}
+
+  // Many retailers expose stock/size at the variant level but only expose
+  // the sale/regular price once at product level. Use that same page-level
+  // markdown for an exact-size in-stock variant rather than treating the
+  // variant as full price.
+  if(validMarkdown(pp,pr)) return {sale:pp,regular:pr,source:'product'}
+
+  // Hybrid fallbacks: variant sale + product regular, or product sale +
+  // variant compare-at. These occur on several commerce platforms.
+  if(validMarkdown(vp,pr)) return {sale:vp,regular:pr,source:'variant+product-regular'}
+  if(validMarkdown(pp,vr)) return {sale:pp,regular:vr,source:'product-sale+variant-regular'}
+
+  // No defensible markdown could be established.
+  const sale = Number.isFinite(vp)&&vp>0 ? vp : (Number.isFinite(pp)&&pp>0 ? pp : null)
+  const regular = Number.isFinite(vr)&&vr>0 ? vr : (Number.isFinite(pr)&&pr>0 ? pr : sale)
+  return {sale,regular,source:'no-markdown'}
+}
+
 async function preferredSizes(admin,retailerId,category){
   const {data:profiles}=await admin.from('fh_profiles').select('id').limit(20); if(!profiles?.length)return[]
   const ids=profiles.map(p=>p.id)
@@ -78,7 +107,7 @@ async function upsertDeal(admin,product,variant,p,sale,regular,isDeal){
 }
 
 export async function scanOne(admin,retailer,url){
-  const diag={checked:1,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSource:'generic',stockTrue:0,stockFalse:0,stockUnknown:0}
+  const diag={checked:1,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSource:'generic',stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0}
   const page=await fetchProduct(url,{timeoutMs:11000}); const p=page.parsed; if(!p?.name)return diag
   diag.parsed=1;diag.images=p.images?.length||0
   const {data:product,error:pe}=await admin.from('fh_products').upsert({retailer_id:retailer.id,retailer_product_id:p.sku,canonical_url:page.finalUrl,product_name:p.name,brand:p.brand,primary_category:p.category,description:p.description,primary_image_url:p.images?.[0]||null,additional_images:p.images?.slice(1)||[],color_name:p.color,last_seen_at:new Date().toISOString(),active:true},{onConflict:'retailer_id,canonical_url'}).select('id').single(); if(pe)throw pe
@@ -92,16 +121,24 @@ export async function scanOne(admin,retailer,url){
   diag.stockTrue=candidates.filter(v=>v.inStock===true).length
   diag.stockFalse=candidates.filter(v=>v.inStock===false).length
   diag.stockUnknown=candidates.filter(v=>v.inStock!==true&&v.inStock!==false).length
+  let overlapCounted=false
   for(const v of candidates){
-    const sale=v.price||p.currentPrice; const regular=v.regularPrice||p.regularPrice||sale; if(!sale)continue
+    const pricing=resolveVariantPricing(v,p)
+    const sale=pricing.sale, regular=pricing.regular
+    if(!sale)continue
     const variantKey=v.sku||`${v.color||p.color||''}-${v.size}`
     const status=v.inStock===true?'verified_in_stock':v.inStock===false?'verified_out_of_stock':'unverified'
     const verified=v.inStock===true||v.inStock===false
     const {data:variant,error:ve}=await admin.from('fh_product_variants').upsert({product_id:product.id,retailer_variant_id:variantKey,color:v.color||p.color,size:v.size,size_normalized:v.size,price:sale,regular_price:regular,in_stock:v.inStock,inventory_status:status,size_verified:verified,last_verified_at:verified?new Date().toISOString():null},{onConflict:'product_id,retailer_variant_id,color,size'}).select('id').single();if(ve)continue
     if(verified)diag.sizeVerified++
     if(v.inStock===true){
+      if(!overlapCounted && validMarkdown(sale,regular)){diag.saleSizeOverlap++;overlapCounted=true}
+      if(pricing.source==='product')diag.productPriceFallbacks++
       await admin.from('fh_price_history').insert({product_id:product.id,variant_id:variant.id,observed_price:sale,regular_price:regular})
-      const isDeal=qualifies(sale,regular,p.category);await upsertDeal(admin,product,variant,p,sale,regular,isDeal);if(isDeal)diag.deals++
+      const isDeal=qualifies(sale,regular,p.category)
+      if(isDeal)diag.dealThresholdPass++; else if(validMarkdown(sale,regular))diag.dealThresholdFail++
+      await upsertDeal(admin,product,variant,p,sale,regular,isDeal)
+      if(isDeal)diag.deals++
     } else if(v.inStock===false) {
       await upsertDeal(admin,product,variant,p,sale,regular,false)
     }
@@ -116,7 +153,7 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
   const summary=[]
   for(const retailer of retailers||[]){
     const start=new Date().toISOString(); const {data:scan}=await admin.from('fh_retailer_scans').insert({retailer_id:retailer.id,started_at:start,status:'running'}).select('id').single()
-    const stats={retailer:retailer.name,discovered:0,checked:0,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSources:{},stockTrue:0,stockFalse:0,stockUnknown:0,errors:0}
+    const stats={retailer:retailer.name,discovered:0,checked:0,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSources:{},stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,errors:0}
     const errors=[]
     try{
       let urls=[]
@@ -130,9 +167,9 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
         urls=[...new Set([...urls,...preferred,...rotated])].slice(0,productsPerRetailer)
       }
       const results=await mapLimit(urls,4,async url=>{try{return await scanOne(admin,retailer,url)}catch(e){errors.push({url,error:String(e.message||e).slice(0,220)});return null}})
-      for(const r of results.filter(Boolean)){for(const k of ['checked','parsed','saleCandidates','sizeMatches','sizeVerified','deals','images','adapterVariants','stockTrue','stockFalse','stockUnknown'])stats[k]+=r[k]||0; const src=r.adapterSource||'generic';stats.adapterSources[src]=(stats.adapterSources[src]||0)+1}
+      for(const r of results.filter(Boolean)){for(const k of ['checked','parsed','saleCandidates','sizeMatches','sizeVerified','deals','images','adapterVariants','stockTrue','stockFalse','stockUnknown','saleSizeOverlap','dealThresholdPass','dealThresholdFail','productPriceFallbacks'])stats[k]+=r[k]||0; const src=r.adapterSource||'generic';stats.adapterSources[src]=(stats.adapterSources[src]||0)+1}
       stats.errors=errors.length
-      const diagnostic={type:'diagnostic',discovered:stats.discovered,parsed:stats.parsed,saleCandidates:stats.saleCandidates,sizeMatches:stats.sizeMatches,sizeVerified:stats.sizeVerified,images:stats.images,adapterVariants:stats.adapterVariants,adapterSources:stats.adapterSources,stockTrue:stats.stockTrue,stockFalse:stats.stockFalse,stockUnknown:stats.stockUnknown}
+      const diagnostic={type:'diagnostic',discovered:stats.discovered,parsed:stats.parsed,saleCandidates:stats.saleCandidates,sizeMatches:stats.sizeMatches,sizeVerified:stats.sizeVerified,images:stats.images,adapterVariants:stats.adapterVariants,adapterSources:stats.adapterSources,stockTrue:stats.stockTrue,stockFalse:stats.stockFalse,stockUnknown:stats.stockUnknown,saleSizeOverlap:stats.saleSizeOverlap,dealThresholdPass:stats.dealThresholdPass,dealThresholdFail:stats.dealThresholdFail,productPriceFallbacks:stats.productPriceFallbacks}
       await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),last_successful_scan_at:new Date().toISOString(),scan_status:'success'}).eq('id',retailer.id)
       await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,new_deals:stats.deals,errors:[diagnostic,...errors].slice(0,30),status:'success'}).eq('id',scan.id)
     }catch(e){errors.push({error:String(e.message||e)});stats.errors=errors.length;await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),scan_status:'error'}).eq('id',retailer.id);if(scan?.id)await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,errors,status:'error'}).eq('id',scan.id)}
