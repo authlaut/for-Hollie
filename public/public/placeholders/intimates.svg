@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#261924"/>
+    <stop offset="0.55" stop-color="#171821"/>
+    <stop offset="1" stop-color="#311727"/>
+  </linearGradient>
+  <radialGradient id="r">
+    <stop offset="0" stop-color="#d56f94" stop-opacity=".32"/>
+    <stop offset="1" stop-color="#d56f94" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+<rect width="600" height="800" fill="url(#g)"/>
+<circle cx="470" cy="155" r="220" fill="url(#r)"/>
+<circle cx="300" cy="335" r="120" fill="none" stroke="#d78aa3" stroke-width="4" opacity=".72"/>
+<text x="300" y="355" text-anchor="middle" font-size="96" font-family="Georgia,serif" fill="#f0b8c7">I</text>
+<text x="300" y="560" text-anchor="middle" font-size="30" letter-spacing="6" font-family="Arial,sans-serif" fill="#e2cbd4">INTIMATES</text>
+<text x="300" y="612" text-anchor="middle" font-size="20" font-family="Arial,sans-serif" fill="#8f8790">SAMPLE PLACEHOLDER</text>
+</svg>
