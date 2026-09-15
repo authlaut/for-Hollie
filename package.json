@@ -1,11 +1,11 @@
 {
   "name": "for-hollie",
   "private": true,
-  "version": "8.0.3",
+  "version": "8.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/verify-build.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
