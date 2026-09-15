@@ -56,8 +56,18 @@ export async function discoverRetailerUrls(retailer,max=260){
 }
 
 function discountPct(sale,regular){return sale&&regular&&regular>sale?Math.round((1-sale/regular)*10000)/100:0}
-function qualifies(sale,regular,category){const d=discountPct(sale,regular);const caps={Tops:25,Layers:30,Bottoms:35,Dresses:40,Intimates:30,Lounge:25,Shoes:40,Active:30,Swim:30,Accessories:30};return d>=50 || (d>=40 && sale<=(caps[category]||30))}
-function quality(d){return d>=70?'exceptional':d>=55?'strong_buy':d>=40?'good_deal':'wildcard'}
+function qualifies(sale,regular,category){
+  const d=discountPct(sale,regular)
+  const caps={Tops:30,Layers:45,Bottoms:45,Dresses:50,Intimates:40,Lounge:35,Shoes:50,Active:40,Swim:40,Accessories:35}
+  const cap=caps[category]||35
+  const priority=new Set(['Bottoms','Layers','Intimates','Shoes'])
+  if(d>=50) return true
+  if(d>=35 && sale<=cap) return true
+  if(d>=25 && priority.has(category) && sale<=cap) return true
+  if(d>=30 && sale<=cap*0.85) return true
+  return false
+}
+function quality(d){return d>=70?'exceptional':d>=50?'strong_buy':d>=35?'good_deal':'wildcard'}
 
 function validMarkdown(sale,regular){
   sale=Number(sale); regular=Number(regular)
@@ -112,7 +122,7 @@ export async function scanOne(admin,retailer,url){
   diag.parsed=1;diag.images=p.images?.length||0
   const {data:product,error:pe}=await admin.from('fh_products').upsert({retailer_id:retailer.id,retailer_product_id:p.sku,canonical_url:page.finalUrl,product_name:p.name,brand:p.brand,primary_category:p.category,description:p.description,primary_image_url:p.images?.[0]||null,additional_images:p.images?.slice(1)||[],color_name:p.color,last_seen_at:new Date().toISOString(),active:true},{onConflict:'retailer_id,canonical_url'}).select('id').single(); if(pe)throw pe
   const productSale=p.currentPrice,productRegular=p.regularPrice||productSale
-  if(productSale&&productRegular&&discountPct(productSale,productRegular)>=35)diag.saleCandidates=1
+  if(productSale&&productRegular&&discountPct(productSale,productRegular)>=25)diag.saleCandidates=1
   const preferred=await preferredSizes(admin,retailer.id,p.category)
   const adapted=await retailerVariants(retailer.slug,page,p)
   diag.adapterVariants=adapted.count||0; diag.adapterSource=adapted.source||'generic'
@@ -157,13 +167,22 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
     const errors=[]
     try{
       let urls=[]
-      const keepKnown=Math.min(3,productsPerRetailer)
+      // Keep a tiny set of previously-seen products fresh, then spend most of each scan
+      // moving through the retailer's broader discovered catalog. V5 accidentally put up
+      // to 40 fixed preferred URLs before the rotating pool, so with an 18-20 item scan
+      // the rotation could never be reached.
+      const keepKnown=Math.min(2,productsPerRetailer)
       const {data:known}=await admin.from('fh_products').select('canonical_url,last_seen_at').eq('retailer_id',retailer.id).order('last_seen_at',{ascending:true}).limit(keepKnown)
       urls=(known||[]).map(x=>x.canonical_url)
-      const discovered=await discoverRetailerUrls(retailer,320);stats.discovered=discovered.length
+      const discovered=await discoverRetailerUrls(retailer,500);stats.discovered=discovered.length
       if(discovered.length){
-        // Rotate the broad fallback portion every scan, but retain sale-page URLs at the front.
-        const preferred=discovered.slice(0,Math.min(40,discovered.length)); const rest=discovered.slice(preferred.length); const bucket=Math.floor(Date.now()/14400000);const offset=rest.length?(bucket*13)%rest.length:0;const rotated=rest.length?[...rest.slice(offset),...rest.slice(0,offset)]:[]
+        const preferredCount=Math.min(10,discovered.length)
+        const preferred=discovered.slice(0,preferredCount)
+        const rest=discovered.slice(preferredCount)
+        const bucket=Math.floor(Date.now()/14400000)
+        const slugSeed=[...String(retailer.slug||'')].reduce((a,c)=>a+c.charCodeAt(0),0)
+        const offset=rest.length?((bucket*17)+slugSeed)%rest.length:0
+        const rotated=rest.length?[...rest.slice(offset),...rest.slice(0,offset)]:[]
         urls=[...new Set([...urls,...preferred,...rotated])].slice(0,productsPerRetailer)
       }
       const results=await mapLimit(urls,4,async url=>{try{return await scanOne(admin,retailer,url)}catch(e){errors.push({url,error:String(e.message||e).slice(0,220)});return null}})
