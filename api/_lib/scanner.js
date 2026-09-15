@@ -68,6 +68,7 @@ function qualifies(sale,regular,category){
   return false
 }
 function quality(d){return d>=70?'exceptional':d>=50?'strong_buy':d>=35?'good_deal':'wildcard'}
+function valueScore(sale,regular,category){const d=discountPct(sale,regular);const targets={Tops:25,Layers:40,Bottoms:40,Dresses:45,Intimates:38,Lounge:30,Shoes:50,Active:35,Swim:35,Accessories:30};const t=targets[category]||35;const price=Math.max(0,Math.min(100,100-(sale/t)*55));return Math.round(Math.min(100,d*.62+price*.38))}
 
 function validMarkdown(sale,regular){
   sale=Number(sale); regular=Number(regular)
@@ -174,7 +175,7 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
       const keepKnown=Math.min(2,productsPerRetailer)
       const {data:known}=await admin.from('fh_products').select('canonical_url,last_seen_at').eq('retailer_id',retailer.id).order('last_seen_at',{ascending:true}).limit(keepKnown)
       urls=(known||[]).map(x=>x.canonical_url)
-      const discovered=await discoverRetailerUrls(retailer,500);stats.discovered=discovered.length
+      const discovered=await discoverRetailerUrls(retailer,900);stats.discovered=discovered.length
       if(discovered.length){
         const preferredCount=Math.min(10,discovered.length)
         const preferred=discovered.slice(0,preferredCount)
