@@ -1,5 +1,8 @@
 import { supabase, supabaseConfigured } from './supabase'
 
+const DISPLAY_PRICE_CAPS={Tops:250,Layers:600,Bottoms:350,Dresses:400,Intimates:200,Lounge:250,Shoes:300,Active:300,Swim:300,Accessories:500}
+function saneDealPrice(sale,regular,category){sale=Number(sale);regular=Number(regular);if(!Number.isFinite(sale)||!Number.isFinite(regular)||sale<=0||regular<=sale)return false;const cap=DISPLAY_PRICE_CAPS[category]||500;return regular<=cap && regular/sale<=8 && (1-sale/regular)<=0.9}
+
 function hoursAgo(dateText) {
   if (!dateText) return Infinity
   return (Date.now() - new Date(dateText).getTime()) / 36e5
@@ -46,7 +49,7 @@ export async function loadLiveDeals(userId) {
   }
 
   const deals = (dealRows||[])
-    .filter(d => d.product?.active !== false && d.variant?.size_verified === true && d.variant?.inventory_status === 'verified_in_stock' && d.variant?.in_stock !== false)
+    .filter(d => saneDealPrice(d.sale_price,d.regular_price,d.product?.primary_category) && d.product?.active !== false && d.variant?.size_verified === true && d.variant?.inventory_status === 'verified_in_stock' && d.variant?.in_stock !== false)
     .map(d => {
       const tags=d.product?.tags||[]
       const occasion=tags.filter(t=>t.tag_type==='occasion').map(t=>t.tag_value)
@@ -66,6 +69,7 @@ export async function loadLiveDeals(userId) {
         discount:Math.round(Number(d.discount_percent ?? 0)),
         size:d.variant?.size || d.variant?.size_normalized || 'Verified size',
         match:Math.round(Number(score?.final_score ?? 0)),
+        valueScore:Math.round(Math.min(100, Number(d.discount_percent||0)*0.72 + Math.max(0,100-(Number(d.sale_price||0)/55)*55)*0.28)),
         reason:score?.reason_summary || 'Verified deal in Hollie’s size',
         badge:quality==='exceptional'?'Exceptional':quality==='strong_buy'?'Strong Buy':quality==='wildcard'?'Wildcard':'Good Wardrobe Add',
         level:quality==='exceptional'?'exceptional':'strong',

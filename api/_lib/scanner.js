@@ -80,6 +80,7 @@ function validMarkdown(sale,regular,category){
   const policy=pricePolicy(category)
   if(regular>policy.maxRegular)return false
   if(regular/sale>policy.maxRatio)return false
+  if(discountPct(sale,regular)>90)return false
   return true
 }
 
@@ -168,7 +169,7 @@ export async function scanOne(admin,retailer,url){
 
 async function mapLimit(items,limit,fn){const out=new Array(items.length);let next=0;async function worker(){while(true){const i=next++;if(i>=items.length)return;try{out[i]=await fn(items[i],i)}catch(e){out[i]={error:e}}}}await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));return out}
 
-export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer=12}={}){
+export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer=24}={}){
   const {data:retailers,error}=await admin.from('fh_retailers').select('*').eq('enabled',true).order('scan_priority').limit(limitRetailers);if(error)throw error
   const summary=[]
   for(const retailer of retailers||[]){
@@ -186,7 +187,7 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
       urls=(known||[]).map(x=>x.canonical_url)
       const discovered=await discoverRetailerUrls(retailer,900);stats.discovered=discovered.length
       if(discovered.length){
-        const preferredCount=Math.min(10,discovered.length)
+        const preferredCount=Math.min(8,discovered.length)
         const preferred=discovered.slice(0,preferredCount)
         const rest=discovered.slice(preferredCount)
         const bucket=Math.floor(Date.now()/14400000)
