@@ -70,28 +70,37 @@ function qualifies(sale,regular,category){
 function quality(d){return d>=70?'exceptional':d>=50?'strong_buy':d>=35?'good_deal':'wildcard'}
 function valueScore(sale,regular,category){const d=discountPct(sale,regular);const targets={Tops:25,Layers:40,Bottoms:40,Dresses:45,Intimates:38,Lounge:30,Shoes:50,Active:35,Swim:35,Accessories:30};const t=targets[category]||35;const price=Math.max(0,Math.min(100,100-(sale/t)*55));return Math.round(Math.min(100,d*.62+price*.38))}
 
-function validMarkdown(sale,regular){
-  sale=Number(sale); regular=Number(regular)
-  return Number.isFinite(sale)&&Number.isFinite(regular)&&sale>0&&regular>sale
+function pricePolicy(category){
+  const policies={Tops:{maxRegular:250,maxRatio:6},Layers:{maxRegular:600,maxRatio:7},Bottoms:{maxRegular:350,maxRatio:6},Dresses:{maxRegular:400,maxRatio:7},Intimates:{maxRegular:200,maxRatio:6},Lounge:{maxRegular:250,maxRatio:6},Shoes:{maxRegular:300,maxRatio:6},Active:{maxRegular:300,maxRatio:6},Swim:{maxRegular:300,maxRatio:6},Accessories:{maxRegular:500,maxRatio:8}}
+  return policies[category]||{maxRegular:500,maxRatio:8}
 }
+function validMarkdown(sale,regular,category){
+  sale=Number(sale); regular=Number(regular)
+  if(!Number.isFinite(sale)||!Number.isFinite(regular)||sale<=0||regular<=sale)return false
+  const policy=pricePolicy(category)
+  if(regular>policy.maxRegular)return false
+  if(regular/sale>policy.maxRatio)return false
+  return true
+}
+
 
 function resolveVariantPricing(v,p){
   const vp=Number(v?.price), vr=Number(v?.regularPrice)
   const pp=Number(p?.currentPrice), pr=Number(p?.regularPrice)
 
   // Prefer a real variant-level markdown when the retailer exposes one.
-  if(validMarkdown(vp,vr)) return {sale:vp,regular:vr,source:'variant'}
+  if(validMarkdown(vp,vr,p?.category)) return {sale:vp,regular:vr,source:'variant'}
 
   // Many retailers expose stock/size at the variant level but only expose
   // the sale/regular price once at product level. Use that same page-level
   // markdown for an exact-size in-stock variant rather than treating the
   // variant as full price.
-  if(validMarkdown(pp,pr)) return {sale:pp,regular:pr,source:'product'}
+  if(validMarkdown(pp,pr,p?.category)) return {sale:pp,regular:pr,source:'product'}
 
   // Hybrid fallbacks: variant sale + product regular, or product sale +
   // variant compare-at. These occur on several commerce platforms.
-  if(validMarkdown(vp,pr)) return {sale:vp,regular:pr,source:'variant+product-regular'}
-  if(validMarkdown(pp,vr)) return {sale:pp,regular:vr,source:'product-sale+variant-regular'}
+  if(validMarkdown(vp,pr,p?.category)) return {sale:vp,regular:pr,source:'variant+product-regular'}
+  if(validMarkdown(pp,vr,p?.category)) return {sale:pp,regular:vr,source:'product-sale+variant-regular'}
 
   // No defensible markdown could be established.
   const sale = Number.isFinite(vp)&&vp>0 ? vp : (Number.isFinite(pp)&&pp>0 ? pp : null)
@@ -143,11 +152,11 @@ export async function scanOne(admin,retailer,url){
     const {data:variant,error:ve}=await admin.from('fh_product_variants').upsert({product_id:product.id,retailer_variant_id:variantKey,color:v.color||p.color,size:v.size,size_normalized:v.size,price:sale,regular_price:regular,in_stock:v.inStock,inventory_status:status,size_verified:verified,last_verified_at:verified?new Date().toISOString():null},{onConflict:'product_id,retailer_variant_id,color,size'}).select('id').single();if(ve)continue
     if(verified)diag.sizeVerified++
     if(v.inStock===true){
-      if(!overlapCounted && validMarkdown(sale,regular)){diag.saleSizeOverlap++;overlapCounted=true}
+      if(!overlapCounted && validMarkdown(sale,regular,p.category)){diag.saleSizeOverlap++;overlapCounted=true}
       if(pricing.source==='product')diag.productPriceFallbacks++
       await admin.from('fh_price_history').insert({product_id:product.id,variant_id:variant.id,observed_price:sale,regular_price:regular})
       const isDeal=qualifies(sale,regular,p.category)
-      if(isDeal)diag.dealThresholdPass++; else if(validMarkdown(sale,regular))diag.dealThresholdFail++
+      if(isDeal)diag.dealThresholdPass++; else if(validMarkdown(sale,regular,p.category))diag.dealThresholdFail++
       await upsertDeal(admin,product,variant,p,sale,regular,isDeal)
       if(isDeal)diag.deals++
     } else if(v.inStock===false) {
