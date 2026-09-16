@@ -14,13 +14,13 @@ const stockBool = v => {
   return null
 }
 const plausibleSize = v => {
-  const s = clean(v)
+  const s = normalizedSize(v)
   if (!s || s.length > 28) return false
   const compact=s.replace(/\s+/g,'').replace(/[–—]/g,'-')
   return /^(?:00|0|[1-6]|[1-6]X|[1-6]XL|4XS|3XS|2XS|XS|S|M|L|XL|2XL|3XL|4XL|5XL|6XL|[0-9]{1,2}(?:\.[05])?|[0-9]{2}(?:[A-H]|AA|DD|DDD|F|G|H)|(?:10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40)W?|(?:00-0|2-4|6-8|10-12|14-16|18-20|20-24|22-24|24-26|26-28|30-32|34-36|38-40))$/i.test(compact)
 }
 
-const normalizedSize = v => clean(v).replace(/&nbsp;/gi,' ').replace(/\s+/g,' ').trim()
+const normalizedSize = v => clean(v).replace(/&nbsp;/gi,' ').replace(/^(?:US\s*)?Size\s*[:#-]?\s*/i,'').replace(/^US\s+/i,'').replace(/\s+/g,' ').trim()
 
 function htmlDecode(s=''){return String(s).replace(/&amp;/g,'&').replace(/&quot;/g,'\"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>')}
 

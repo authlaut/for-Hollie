@@ -183,7 +183,7 @@ export async function fetchProduct(url, {timeoutMs=12000}={}) {
   } finally { clearTimeout(timer) }
 }
 
-export function normalizeSize(v='') { return String(v).trim().toLowerCase().replace(/\s+/g,'').replace(/xxxlarge|3xl/g,'3x').replace(/xxxl/g,'3x').replace(/^size/,'') }
+export function normalizeSize(v='') { return String(v).trim().toLowerCase().replace(/&nbsp;/g,' ').replace(/^(?:us\s*)?size\s*[:#-]?\s*/,'').replace(/^us\s+/,'').replace(/\s+/g,'').replace(/[–—]/g,'-').replace(/xxxlarge|xxxl|3xl/g,'3x').replace(/\//g,'-') }
 
 export function sizeMatches(candidate, preferred, retailerSlug, category) {
   const c=normalizeSize(candidate), p=normalizeSize(preferred)

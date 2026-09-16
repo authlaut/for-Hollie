@@ -5,6 +5,8 @@ function xmlLocs(xml){return [...xml.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)].ma
 function productish(url){return /\/product\/|\/p\/|\/products?\/|\.html(?:\?|$)|\/item\//i.test(url) && !/category|collection|search|blog|help|store|account|cart/i.test(url)}
 function saleish(url){return /sale|clearance|outlet|last-chance|deals|markdown/i.test(url)}
 async function textFetch(url,timeout=9000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const r=await fetch(url,{signal:c.signal,redirect:'follow',headers:{'user-agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152 Safari/537.36','accept':'text/html,application/xml,text/xml;q=0.9,*/*;q=0.8','accept-language':'en-US,en;q=0.9'}});if(!r.ok)throw new Error(`${r.status}`);return await r.text()}finally{clearTimeout(t)}}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function normalizeRetailerUrl(retailer,url){try{const u=new URL(url);u.hash='';if(retailer.slug==='glamorise')u.pathname=u.pathname.replace(/^\/en-ca(?=\/)/i,'');for(const k of [...u.searchParams.keys()])if(/^(utm_|fbclid|gclid|variant$)/i.test(k))u.searchParams.delete(k);return u.href}catch{return url}}
 function linksFromHtml(html,base){const out=[];for(const m of html.matchAll(/<a\b[^>]+href=["']([^"'#]+)["']/gi)){try{const u=new URL(m[1].replace(/&amp;/g,'&'),base);if(/^https?:$/.test(u.protocol))out.push(u.href)}catch{}}return [...new Set(out)]}
 
 const SALE_PATHS={
@@ -52,19 +54,22 @@ async function discoverFromSitemaps(retailer,max=500){
 export async function discoverRetailerUrls(retailer,max=260){
   const [sale,sitemap]=await Promise.all([discoverFromSalePages(retailer,Math.min(160,max)),discoverFromSitemaps(retailer,Math.min(600,max*3))])
   // Sale-page discoveries are intentionally first; sitemap entries provide breadth/fallback.
-  return [...new Set([...sale,...sitemap])].slice(0,max)
+  return [...new Set([...sale,...sitemap].map(u=>normalizeRetailerUrl(retailer,u)))].slice(0,max)
 }
 
 function discountPct(sale,regular){return sale&&regular&&regular>sale?Math.round((1-sale/regular)*10000)/100:0}
 function qualifies(sale,regular,category){
   const d=discountPct(sale,regular)
   const caps={Tops:30,Layers:45,Bottoms:45,Dresses:50,Intimates:40,Lounge:35,Shoes:50,Active:40,Swim:40,Accessories:35}
-  const cap=caps[category]||35
+  const greatPrice={Tops:25,Layers:38,Bottoms:40,Dresses:45,Intimates:38,Lounge:30,Shoes:45,Active:35,Swim:35,Accessories:30}
+  const cap=caps[category]||35, target=greatPrice[category]||35
   const priority=new Set(['Bottoms','Layers','Intimates','Shoes'])
+  if(!validMarkdown(sale,regular,category) || d<20) return false
   if(d>=50) return true
   if(d>=35 && sale<=cap) return true
   if(d>=25 && priority.has(category) && sale<=cap) return true
-  if(d>=30 && sale<=cap*0.85) return true
+  if(d>=25 && sale<=target) return true
+  if(d>=20 && sale<=target*0.78) return true
   return false
 }
 function quality(d){return d>=70?'exceptional':d>=50?'strong_buy':d>=35?'good_deal':'wildcard'}
@@ -128,7 +133,7 @@ async function upsertDeal(admin,product,variant,p,sale,regular,isDeal){
 }
 
 export async function scanOne(admin,retailer,url){
-  const diag={checked:1,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSource:'generic',stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0}
+  const diag={checked:1,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSource:'generic',stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,rejectedNoMarkdown:0,rejectedValue:0}
   const page=await fetchProduct(url,{timeoutMs:11000}); const p=page.parsed; if(!p?.name)return diag
   diag.parsed=1;diag.images=p.images?.length||0
   const {data:product,error:pe}=await admin.from('fh_products').upsert({retailer_id:retailer.id,retailer_product_id:p.sku,canonical_url:page.finalUrl,product_name:p.name,brand:p.brand,primary_category:p.category,description:p.description,primary_image_url:p.images?.[0]||null,additional_images:p.images?.slice(1)||[],color_name:p.color,last_seen_at:new Date().toISOString(),active:true},{onConflict:'retailer_id,canonical_url'}).select('id').single(); if(pe)throw pe
@@ -157,7 +162,7 @@ export async function scanOne(admin,retailer,url){
       if(pricing.source==='product')diag.productPriceFallbacks++
       await admin.from('fh_price_history').insert({product_id:product.id,variant_id:variant.id,observed_price:sale,regular_price:regular})
       const isDeal=qualifies(sale,regular,p.category)
-      if(isDeal)diag.dealThresholdPass++; else if(validMarkdown(sale,regular,p.category))diag.dealThresholdFail++
+      if(isDeal)diag.dealThresholdPass++; else if(validMarkdown(sale,regular,p.category)){diag.dealThresholdFail++;diag.rejectedValue++} else diag.rejectedNoMarkdown++
       await upsertDeal(admin,product,variant,p,sale,regular,isDeal)
       if(isDeal)diag.deals++
     } else if(v.inStock===false) {
@@ -167,14 +172,17 @@ export async function scanOne(admin,retailer,url){
   return diag
 }
 
-async function mapLimit(items,limit,fn){const out=new Array(items.length);let next=0;async function worker(){while(true){const i=next++;if(i>=items.length)return;try{out[i]=await fn(items[i],i)}catch(e){out[i]={error:e}}}}await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));return out}
+async function mapLimit(items,limit,fn,delayMs=0){const out=new Array(items.length);let next=0;async function worker(workerId){if(delayMs&&workerId)await sleep(workerId*Math.ceil(delayMs/limit));while(true){const i=next++;if(i>=items.length)return;try{out[i]=await fn(items[i],i)}catch(e){out[i]={error:e}}if(delayMs)await sleep(delayMs)}}await Promise.all(Array.from({length:Math.min(limit,items.length)},(_,i)=>worker(i)));return out}
 
-export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer=24}={}){
+const RETAILER_PACING={glamorise:{concurrency:2,delayMs:650,retries:2},bloomchic:{concurrency:2,delayMs:650,retries:2},'universal-standard':{concurrency:2,delayMs:450,retries:1}}
+async function scanOneResilient(admin,retailer,url){const policy=RETAILER_PACING[retailer.slug]||{concurrency:4,delayMs:120,retries:1};let last;for(let attempt=0;attempt<=policy.retries;attempt++){try{return await scanOne(admin,retailer,url)}catch(e){last=e;const msg=String(e?.message||e);if(!/429|too many requests/i.test(msg)||attempt>=policy.retries)throw e;await sleep(900*Math.pow(2,attempt)+Math.floor(Math.random()*350))}}throw last}
+
+export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer=44}={}){
   const {data:retailers,error}=await admin.from('fh_retailers').select('*').eq('enabled',true).order('scan_priority').limit(limitRetailers);if(error)throw error
   const summary=[]
   for(const retailer of retailers||[]){
     const start=new Date().toISOString(); const {data:scan}=await admin.from('fh_retailer_scans').insert({retailer_id:retailer.id,started_at:start,status:'running'}).select('id').single()
-    const stats={retailer:retailer.name,discovered:0,checked:0,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSources:{},stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,errors:0}
+    const stats={retailer:retailer.name,discovered:0,checked:0,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSources:{},stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,rejectedNoMarkdown:0,rejectedValue:0,rateLimited:0,errors:0}
     const errors=[]
     try{
       let urls=[]
@@ -196,10 +204,11 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
         const rotated=rest.length?[...rest.slice(offset),...rest.slice(0,offset)]:[]
         urls=[...new Set([...urls,...preferred,...rotated])].slice(0,productsPerRetailer)
       }
-      const results=await mapLimit(urls,4,async url=>{try{return await scanOne(admin,retailer,url)}catch(e){errors.push({url,error:String(e.message||e).slice(0,220)});return null}})
-      for(const r of results.filter(Boolean)){for(const k of ['checked','parsed','saleCandidates','sizeMatches','sizeVerified','deals','images','adapterVariants','stockTrue','stockFalse','stockUnknown','saleSizeOverlap','dealThresholdPass','dealThresholdFail','productPriceFallbacks'])stats[k]+=r[k]||0; const src=r.adapterSource||'generic';stats.adapterSources[src]=(stats.adapterSources[src]||0)+1}
+      const pace=RETAILER_PACING[retailer.slug]||{concurrency:4,delayMs:120,retries:1}
+      const results=await mapLimit(urls,pace.concurrency,async url=>{try{return await scanOneResilient(admin,retailer,url)}catch(e){const msg=String(e.message||e).slice(0,220);if(/429|too many requests/i.test(msg))stats.rateLimited++;errors.push({url,error:msg});return null}},pace.delayMs)
+      for(const r of results.filter(Boolean)){for(const k of ['checked','parsed','saleCandidates','sizeMatches','sizeVerified','deals','images','adapterVariants','stockTrue','stockFalse','stockUnknown','saleSizeOverlap','dealThresholdPass','dealThresholdFail','productPriceFallbacks','rejectedNoMarkdown','rejectedValue'])stats[k]+=r[k]||0; const src=r.adapterSource||'generic';stats.adapterSources[src]=(stats.adapterSources[src]||0)+1}
       stats.errors=errors.length
-      const diagnostic={type:'diagnostic',discovered:stats.discovered,parsed:stats.parsed,saleCandidates:stats.saleCandidates,sizeMatches:stats.sizeMatches,sizeVerified:stats.sizeVerified,images:stats.images,adapterVariants:stats.adapterVariants,adapterSources:stats.adapterSources,stockTrue:stats.stockTrue,stockFalse:stats.stockFalse,stockUnknown:stats.stockUnknown,saleSizeOverlap:stats.saleSizeOverlap,dealThresholdPass:stats.dealThresholdPass,dealThresholdFail:stats.dealThresholdFail,productPriceFallbacks:stats.productPriceFallbacks}
+      const diagnostic={type:'diagnostic',discovered:stats.discovered,parsed:stats.parsed,saleCandidates:stats.saleCandidates,sizeMatches:stats.sizeMatches,sizeVerified:stats.sizeVerified,images:stats.images,adapterVariants:stats.adapterVariants,adapterSources:stats.adapterSources,stockTrue:stats.stockTrue,stockFalse:stats.stockFalse,stockUnknown:stats.stockUnknown,saleSizeOverlap:stats.saleSizeOverlap,dealThresholdPass:stats.dealThresholdPass,dealThresholdFail:stats.dealThresholdFail,productPriceFallbacks:stats.productPriceFallbacks,rejectedNoMarkdown:stats.rejectedNoMarkdown,rejectedValue:stats.rejectedValue,rateLimited:stats.rateLimited,scanConcurrency:pace.concurrency,scanDelayMs:pace.delayMs}
       await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),last_successful_scan_at:new Date().toISOString(),scan_status:'success'}).eq('id',retailer.id)
       await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,new_deals:stats.deals,errors:[diagnostic,...errors].slice(0,30),status:'success'}).eq('id',scan.id)
     }catch(e){errors.push({error:String(e.message||e)});stats.errors=errors.length;await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),scan_status:'error'}).eq('id',retailer.id);if(scan?.id)await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,errors,status:'error'}).eq('id',scan.id)}
