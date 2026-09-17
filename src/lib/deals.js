@@ -3,6 +3,21 @@ import { supabase, supabaseConfigured } from './supabase'
 const DISPLAY_PRICE_CAPS={Tops:250,Layers:600,Bottoms:350,Dresses:400,Intimates:200,Lounge:250,Shoes:300,Active:300,Swim:300,Accessories:500}
 function saneDealPrice(sale,regular,category){sale=Number(sale);regular=Number(regular);if(!Number.isFinite(sale)||!Number.isFinite(regular)||sale<=0||regular<=sale)return false;const cap=DISPLAY_PRICE_CAPS[category]||500;return regular<=cap && regular/sale<=8 && (1-sale/regular)<=0.9}
 
+
+function retailerProvenanceOk(store,slug,url,name=''){
+  let host='';try{host=new URL(url||'').hostname.toLowerCase().replace(/^www\./,'')}catch{return false}
+  const expected={
+    eloquii:'eloquii.com',torrid:'torrid.com','lane-bryant':'lanebryant.com',maurices:'maurices.com',
+    'lands-end':'landsend.com','universal-standard':'universalstandard.com','old-navy':'oldnavy.gap.com',
+    kohls:'kohls.com',jcpenney:'jcpenney.com',bloomchic:'bloomchic.com',glamorise:'glamorise.com'
+  }[slug]
+  if(expected && !(host===expected||host.endsWith(`.${expected}`))) return false
+  const hay=`${store||''} ${name||''} ${url||''}`.toLowerCase()
+  if(/(?:\bmen'?s\b|\bmenswear\b|\bbig\s*&?\s*tall\b|\bking\s*size\b|\bkingsize\b|\bks\s+island\b|\bswim\s+trunks?\b|\bboard\s*shorts?\b)/i.test(hay))return false
+  if(slug==='eloquii' && /\b(?:woman\s+within|roaman'?s|jessica\s+london|swimsuits?\s*for\s*all|king\s*size|kingsize)\b/i.test(hay))return false
+  return true
+}
+
 function hoursAgo(dateText) {
   if (!dateText) return Infinity
   return (Date.now() - new Date(dateText).getTime()) / 36e5
@@ -49,7 +64,7 @@ export async function loadLiveDeals(userId) {
   }
 
   const deals = (dealRows||[])
-    .filter(d => saneDealPrice(d.sale_price,d.regular_price,d.product?.primary_category) && d.product?.active !== false && d.variant?.size_verified === true && d.variant?.inventory_status === 'verified_in_stock' && d.variant?.in_stock !== false)
+    .filter(d => saneDealPrice(d.sale_price,d.regular_price,d.product?.primary_category) && retailerProvenanceOk(d.product?.retailer?.name,d.product?.retailer?.slug,d.product?.canonical_url,d.product?.product_name) && d.product?.active !== false && d.variant?.size_verified === true && d.variant?.inventory_status === 'verified_in_stock' && d.variant?.in_stock !== false)
     .map(d => {
       const tags=d.product?.tags||[]
       const occasion=tags.filter(t=>t.tag_type==='occasion').map(t=>t.tag_value)

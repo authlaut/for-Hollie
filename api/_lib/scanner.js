@@ -79,6 +79,38 @@ function pricePolicy(category){
   const policies={Tops:{maxRegular:250,maxRatio:6},Layers:{maxRegular:600,maxRatio:7},Bottoms:{maxRegular:350,maxRatio:6},Dresses:{maxRegular:400,maxRatio:7},Intimates:{maxRegular:200,maxRatio:6},Lounge:{maxRegular:250,maxRatio:6},Shoes:{maxRegular:300,maxRatio:6},Active:{maxRegular:300,maxRatio:6},Swim:{maxRegular:300,maxRatio:6},Accessories:{maxRegular:500,maxRatio:8}}
   return policies[category]||{maxRegular:500,maxRatio:8}
 }
+function hostMatchesRetailer(retailer, rawUrl){
+  try{
+    const finalHost=new URL(rawUrl).hostname.toLowerCase().replace(/^www\./,'')
+    const baseHost=new URL(retailer.base_url).hostname.toLowerCase().replace(/^www\./,'')
+    return finalHost===baseHost || finalHost.endsWith(`.${baseHost}`)
+  }catch{return false}
+}
+
+function hollieRelevantProduct(retailer,p,finalUrl){
+  if(!hostMatchesRetailer(retailer,finalUrl)) return {ok:false,reason:'retailer_provenance'}
+  const hay=`${p?.name||''} ${p?.brand||''} ${p?.description||''} ${finalUrl||''}`.toLowerCase()
+  // Hard reject unmistakable mens/big-and-tall catalog contamination. Keep generic
+  // words like "boyfriend" because they are also legitimate women's style names.
+  const mens=/(?:\bmen'?s\b|\bmenswear\b|\bbig\s*&?\s*tall\b|\bking\s*size\b|\bkingsize\b|\bks\s+island\b|\bswim\s+trunks?\b|\bboard\s*shorts?\b|\bmen'?s\s+underwear\b|\bmen'?s\s+briefs?\b|\bmen'?s\s+boxers?\b)/i
+  if(mens.test(hay)) return {ok:false,reason:'mens_catalog'}
+  // ELOQUII must stay on its own storefront. This specifically blocks shared
+  // FullBeauty/KingSize/Woman Within catalog redirects from being mislabeled ELOQUII.
+  if(retailer.slug==='eloquii'){
+    try{const h=new URL(finalUrl).hostname.toLowerCase();if(!(h==='eloquii.com'||h.endsWith('.eloquii.com')))return {ok:false,reason:'eloquii_provenance'}}catch{return {ok:false,reason:'eloquii_provenance'}}
+    if(/\b(?:woman\s+within|roaman'?s|jessica\s+london|swimsuits?\s*for\s*all|king\s*size|kingsize)\b/i.test(hay))return {ok:false,reason:'eloquii_cross_catalog'}
+  }
+  return {ok:true,reason:null}
+}
+
+async function quarantineExisting(admin,retailer,canonicalUrl){
+  const {data:rows}=await admin.from('fh_products').select('id').eq('retailer_id',retailer.id).eq('canonical_url',canonicalUrl)
+  const ids=(rows||[]).map(x=>x.id)
+  if(!ids.length)return
+  await admin.from('fh_products').update({active:false,last_seen_at:new Date().toISOString()}).in('id',ids)
+  await admin.from('fh_deals').update({qualifies_for_feed:false,last_verified_at:new Date().toISOString()}).in('product_id',ids)
+}
+
 function validMarkdown(sale,regular,category){
   sale=Number(sale); regular=Number(regular)
   if(!Number.isFinite(sale)||!Number.isFinite(regular)||sale<=0||regular<=sale)return false
@@ -133,9 +165,11 @@ async function upsertDeal(admin,product,variant,p,sale,regular,isDeal){
 }
 
 export async function scanOne(admin,retailer,url){
-  const diag={checked:1,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSource:'generic',stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,rejectedNoMarkdown:0,rejectedValue:0}
+  const diag={checked:1,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSource:'generic',stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,rejectedNoMarkdown:0,rejectedValue:0,rejectedRelevance:0}
   const page=await fetchProduct(url,{timeoutMs:11000}); const p=page.parsed; if(!p?.name)return diag
   diag.parsed=1;diag.images=p.images?.length||0
+  const relevance=hollieRelevantProduct(retailer,p,page.finalUrl)
+  if(!relevance.ok){diag.rejectedRelevance=1;await quarantineExisting(admin,retailer,page.finalUrl);return diag}
   const {data:product,error:pe}=await admin.from('fh_products').upsert({retailer_id:retailer.id,retailer_product_id:p.sku,canonical_url:page.finalUrl,product_name:p.name,brand:p.brand,primary_category:p.category,description:p.description,primary_image_url:p.images?.[0]||null,additional_images:p.images?.slice(1)||[],color_name:p.color,last_seen_at:new Date().toISOString(),active:true},{onConflict:'retailer_id,canonical_url'}).select('id').single(); if(pe)throw pe
   const productSale=p.currentPrice,productRegular=p.regularPrice||productSale
   if(productSale&&productRegular&&discountPct(productSale,productRegular)>=25)diag.saleCandidates=1
@@ -208,7 +242,7 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
   const summary=[]
   for(const retailer of retailers||[]){
     const start=new Date().toISOString(); const {data:scan}=await admin.from('fh_retailer_scans').insert({retailer_id:retailer.id,started_at:start,status:'running'}).select('id').single()
-    const stats={retailer:retailer.name,discovered:0,checked:0,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSources:{},stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,rejectedNoMarkdown:0,rejectedValue:0,rateLimited:0,errors:0}
+    const stats={retailer:retailer.name,discovered:0,checked:0,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSources:{},stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,rejectedNoMarkdown:0,rejectedValue:0,rejectedRelevance:0,rateLimited:0,errors:0}
     const errors=[]
     try{
       let urls=[]
@@ -233,7 +267,7 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
       }
       const pace=RETAILER_PACING[retailer.slug]||{concurrency:4,delayMs:120,retries:1}
       const results=await mapLimit(urls,pace.concurrency,async url=>{try{return await scanOneResilient(admin,retailer,url)}catch(e){const msg=String(e.message||e).slice(0,220);if(/429|too many requests/i.test(msg))stats.rateLimited++;errors.push({url,error:msg});return null}},pace.delayMs)
-      for(const r of results.filter(Boolean)){for(const k of ['checked','parsed','saleCandidates','sizeMatches','sizeVerified','deals','images','adapterVariants','stockTrue','stockFalse','stockUnknown','saleSizeOverlap','dealThresholdPass','dealThresholdFail','productPriceFallbacks','rejectedNoMarkdown','rejectedValue'])stats[k]+=r[k]||0; const src=r.adapterSource||'generic';stats.adapterSources[src]=(stats.adapterSources[src]||0)+1}
+      for(const r of results.filter(Boolean)){for(const k of ['checked','parsed','saleCandidates','sizeMatches','sizeVerified','deals','images','adapterVariants','stockTrue','stockFalse','stockUnknown','saleSizeOverlap','dealThresholdPass','dealThresholdFail','productPriceFallbacks','rejectedNoMarkdown','rejectedValue','rejectedRelevance'])stats[k]+=r[k]||0; const src=r.adapterSource||'generic';stats.adapterSources[src]=(stats.adapterSources[src]||0)+1}
       stats.errors=errors.length
       const diagnostic={type:'diagnostic',discovered:stats.discovered,parsed:stats.parsed,saleCandidates:stats.saleCandidates,sizeMatches:stats.sizeMatches,sizeVerified:stats.sizeVerified,images:stats.images,adapterVariants:stats.adapterVariants,adapterSources:stats.adapterSources,stockTrue:stats.stockTrue,stockFalse:stats.stockFalse,stockUnknown:stats.stockUnknown,saleSizeOverlap:stats.saleSizeOverlap,dealThresholdPass:stats.dealThresholdPass,dealThresholdFail:stats.dealThresholdFail,productPriceFallbacks:stats.productPriceFallbacks,rejectedNoMarkdown:stats.rejectedNoMarkdown,rejectedValue:stats.rejectedValue,rateLimited:stats.rateLimited,scanConcurrency:pace.concurrency,scanDelayMs:pace.delayMs}
       await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),last_successful_scan_at:new Date().toISOString(),scan_status:'success'}).eq('id',retailer.id)
