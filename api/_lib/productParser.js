@@ -188,6 +188,9 @@ export function normalizeSize(v='') { return String(v).trim().toLowerCase().repl
 export function sizeMatches(candidate, preferred, retailerSlug, category) {
   const c=normalizeSize(candidate), p=normalizeSize(preferred)
   if(!c||!p) return false
+  // Hollie's bottoms are strict numeric size 24. Grouped sizes, alpha conversions,
+  // and nearby 22/26 sizes are never treated as an exact match.
+  if(category==='Bottoms' && p==='24') return /^(24|24w)$/.test(c)
   if(c===p) return true
   if(retailerSlug==='torrid' && (p==='3x'||p==='24-26'||p==='22-24') && (c==='3'||c==='3x')) return category!=='Bottoms'
   if(retailerSlug==='bloomchic' && (p==='3x'||p==='24-26'||p==='22-24') && /^(3x|22-24|24-26)$/.test(c)) return category!=='Bottoms'

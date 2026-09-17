@@ -1,4 +1,4 @@
-import { fetchProduct, sizeMatches } from './productParser.js'
+import { fetchProduct, sizeMatches, inferCategory } from './productParser.js'
 import { retailerVariants } from './retailerAdapters.js'
 
 function xmlLocs(xml){return [...xml.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)].map(m=>m[1].replace(/&amp;/g,'&'))}
@@ -60,8 +60,8 @@ export async function discoverRetailerUrls(retailer,max=260){
 function discountPct(sale,regular){return sale&&regular&&regular>sale?Math.round((1-sale/regular)*10000)/100:0}
 function qualifies(sale,regular,category){
   const d=discountPct(sale,regular)
-  const caps={Tops:30,Layers:45,Bottoms:45,Dresses:50,Intimates:40,Lounge:35,Shoes:50,Active:40,Swim:40,Accessories:35}
-  const greatPrice={Tops:25,Layers:38,Bottoms:40,Dresses:45,Intimates:38,Lounge:30,Shoes:45,Active:35,Swim:35,Accessories:30}
+  const caps={Tops:35,Layers:45,Bottoms:45,Dresses:50,Intimates:45,Lounge:35,Shoes:50,Active:40,Swim:40,Accessories:35}
+  const greatPrice={Tops:25,Layers:35,Bottoms:45,Dresses:45,Intimates:40,Lounge:35,Shoes:50,Active:35,Swim:35,Accessories:30}
   const cap=caps[category]||35, target=greatPrice[category]||35
   const priority=new Set(['Bottoms','Layers','Intimates','Shoes'])
   if(!validMarkdown(sale,regular,category) || d<20) return false
@@ -73,7 +73,7 @@ function qualifies(sale,regular,category){
   return false
 }
 function quality(d){return d>=70?'exceptional':d>=50?'strong_buy':d>=35?'good_deal':'wildcard'}
-function valueScore(sale,regular,category){const d=discountPct(sale,regular);const targets={Tops:25,Layers:40,Bottoms:40,Dresses:45,Intimates:38,Lounge:30,Shoes:50,Active:35,Swim:35,Accessories:30};const t=targets[category]||35;const price=Math.max(0,Math.min(100,100-(sale/t)*55));return Math.round(Math.min(100,d*.62+price*.38))}
+function valueScore(sale,regular,category){const d=discountPct(sale,regular);const targets={Tops:25,Layers:35,Bottoms:45,Dresses:45,Intimates:40,Lounge:35,Shoes:50,Active:35,Swim:35,Accessories:30};const t=targets[category]||35;const price=Math.max(0,Math.min(100,100-(sale/t)*55));return Math.round(Math.min(100,d*.62+price*.38))}
 
 function pricePolicy(category){
   const policies={Tops:{maxRegular:250,maxRatio:6},Layers:{maxRegular:600,maxRatio:7},Bottoms:{maxRegular:350,maxRatio:6},Dresses:{maxRegular:400,maxRatio:7},Intimates:{maxRegular:200,maxRatio:6},Lounge:{maxRegular:250,maxRatio:6},Shoes:{maxRegular:300,maxRatio:6},Active:{maxRegular:300,maxRatio:6},Swim:{maxRegular:300,maxRatio:6},Accessories:{maxRegular:500,maxRatio:8}}
@@ -177,7 +177,33 @@ async function mapLimit(items,limit,fn,delayMs=0){const out=new Array(items.leng
 const RETAILER_PACING={glamorise:{concurrency:2,delayMs:650,retries:2},bloomchic:{concurrency:2,delayMs:650,retries:2},'universal-standard':{concurrency:2,delayMs:450,retries:1}}
 async function scanOneResilient(admin,retailer,url){const policy=RETAILER_PACING[retailer.slug]||{concurrency:4,delayMs:120,retries:1};let last;for(let attempt=0;attempt<=policy.retries;attempt++){try{return await scanOne(admin,retailer,url)}catch(e){last=e;const msg=String(e?.message||e);if(!/429|too many requests/i.test(msg)||attempt>=policy.retries)throw e;await sleep(900*Math.pow(2,attempt)+Math.floor(Math.random()*350))}}throw last}
 
-export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer=44}={}){
+
+function categoryFromUrl(url=''){
+  const s=String(url).toLowerCase()
+  if(/bra|bralette|panty|intimate|lingerie/.test(s)) return 'Intimates'
+  if(/jean|denim|pant|legging|skirt|short/.test(s)) return 'Bottoms'
+  if(/dress|gown|jumpsuit|romper/.test(s)) return 'Dresses'
+  if(/cardigan|jacket|coat|blazer|sweater|shacket|duster|wrap/.test(s)) return 'Layers'
+  if(/sneaker|shoe|boot|flat|loafer|sandal|slipper/.test(s)) return 'Shoes'
+  if(/pajama|sleep|robe|lounge/.test(s)) return 'Lounge'
+  if(/active|workout|yoga|performance|sport/.test(s)) return 'Active'
+  if(/bag|handbag|crossbody|belt|earring|necklace|bracelet|scarf|tights|hair/.test(s)) return 'Accessories'
+  if(/swim|swimsuit|tankini|bikini/.test(s)) return 'Swim'
+  return 'Tops'
+}
+
+function diversifyUrls(urls,max){
+  // Everyday gaps first, then church/date-night categories. Round-robin prevents a
+  // retailer sitemap dominated by one category from consuming the whole scan budget.
+  const order=['Bottoms','Tops','Layers','Intimates','Shoes','Lounge','Active','Dresses','Accessories','Swim']
+  const buckets=Object.fromEntries(order.map(k=>[k,[]]))
+  for(const url of urls){const c=categoryFromUrl(url);(buckets[c]||buckets.Tops).push(url)}
+  const out=[]; let moved=true
+  while(out.length<max && moved){moved=false;for(const c of order){const u=buckets[c].shift();if(u){out.push(u);moved=true;if(out.length>=max)break}}}
+  return out
+}
+
+export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer=52}={}){
   const {data:retailers,error}=await admin.from('fh_retailers').select('*').eq('enabled',true).order('scan_priority').limit(limitRetailers);if(error)throw error
   const summary=[]
   for(const retailer of retailers||[]){
@@ -195,14 +221,15 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
       urls=(known||[]).map(x=>x.canonical_url)
       const discovered=await discoverRetailerUrls(retailer,900);stats.discovered=discovered.length
       if(discovered.length){
-        const preferredCount=Math.min(8,discovered.length)
-        const preferred=discovered.slice(0,preferredCount)
-        const rest=discovered.slice(preferredCount)
+        const preferredCount=Math.min(10,discovered.length)
+        const preferred=diversifyUrls(discovered.slice(0,Math.min(180,discovered.length)),preferredCount)
+        const preferredSet=new Set(preferred)
+        const rest=discovered.filter(u=>!preferredSet.has(u))
         const bucket=Math.floor(Date.now()/14400000)
         const slugSeed=[...String(retailer.slug||'')].reduce((a,c)=>a+c.charCodeAt(0),0)
         const offset=rest.length?((bucket*17)+slugSeed)%rest.length:0
         const rotated=rest.length?[...rest.slice(offset),...rest.slice(0,offset)]:[]
-        urls=[...new Set([...urls,...preferred,...rotated])].slice(0,productsPerRetailer)
+        urls=[...new Set([...urls,...preferred,...diversifyUrls(rotated,Math.max(0,productsPerRetailer-urls.length-preferred.length))])].slice(0,productsPerRetailer)
       }
       const pace=RETAILER_PACING[retailer.slug]||{concurrency:4,delayMs:120,retries:1}
       const results=await mapLimit(urls,pace.concurrency,async url=>{try{return await scanOneResilient(admin,retailer,url)}catch(e){const msg=String(e.message||e).slice(0,220);if(/429|too many requests/i.test(msg))stats.rateLimited++;errors.push({url,error:msg});return null}},pace.delayMs)

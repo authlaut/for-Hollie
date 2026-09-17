@@ -1,0 +1,23 @@
+FOR HOLLIE V8.3 — DEEP WARDROBE COVERAGE
+
+Built directly from Chris's current GitHub V8.2.0 ZIP baseline.
+
+WHAT CHANGED
+- Increased each retailer scan budget from 44 to 52 product pages per run.
+- Added category-balanced discovery/rotation so a retailer's first sale category cannot crowd out jeans, everyday tops, layers, bras, shoes, lounge, active, dresses, accessories, and swim.
+- Reweighted discovery toward Hollie's current wardrobe gaps: bottoms, everyday tops, neutral layers, supportive intimates, and shoes before lower-priority categories.
+- Enforced strict bottoms sizing: Hollie's size-24 pants/jeans only qualify from an actual 24/24W variant. Grouped 22/24, 24/26, alpha L/XL conversions, and nearby 22/26 sizes are not exact matches.
+- Aligned worthwhile-sale price targets with the current shopping rules: tops about $25, layers $35, bottoms $45, intimates $40, lounge $35, shoes $50, with stronger markdowns still prioritized.
+- Preserved V8.2 fake-price sanity guards, exact in-stock requirement, retailer pacing/backoff, Glamorise normalization, feedback, watchlist, and Scanner Health.
+- Updated About/diagnostics to v8.3.0 / build 2026.09.17.
+
+INSTALL / TEST
+1. Create a new GitHub branch (recommended: v8.3-deep-coverage).
+2. Copy the CONTENTS of this package into the repository root, replacing matching files. Do not replace/delete .git.
+3. Commit and push the branch.
+4. Let Vercel create a Preview deployment first.
+5. Confirm Settings > About shows v8.3.0.
+6. Run Scan Retailers and review Deals plus Settings > Scanner Health.
+7. Confirm bottoms shown as matches are actual size 24/24W and retailer/category coverage is broader.
+
+NO DATABASE MIGRATION IS REQUIRED.
