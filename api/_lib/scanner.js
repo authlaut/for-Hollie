@@ -229,7 +229,7 @@ function categoryFromUrl(url=''){
 function diversifyUrls(urls,max){
   // Everyday gaps first, then church/date-night categories. Round-robin prevents a
   // retailer sitemap dominated by one category from consuming the whole scan budget.
-  const order=['Bottoms','Tops','Layers','Intimates','Shoes','Lounge','Active','Dresses','Accessories','Swim']
+  const order=['Bottoms','Layers','Tops','Shoes','Intimates','Lounge','Active','Dresses','Accessories','Swim']
   const buckets=Object.fromEntries(order.map(k=>[k,[]]))
   for(const url of urls){const c=categoryFromUrl(url);(buckets[c]||buckets.Tops).push(url)}
   const out=[]; let moved=true
@@ -239,8 +239,10 @@ function diversifyUrls(urls,max){
 
 export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer=52}={}){
   const {data:retailers,error}=await admin.from('fh_retailers').select('*').eq('enabled',true).order('scan_priority').limit(limitRetailers);if(error)throw error
-  const summary=[]
-  for(const retailer of retailers||[]){
+  // Run a few retailers in parallel so one slow/blocked store cannot consume the
+  // entire serverless execution window. Each retailer remains isolated and records
+  // its own success/error state.
+  const summary=await mapLimit(retailers||[],3,async retailer=>{
     const start=new Date().toISOString(); const {data:scan}=await admin.from('fh_retailer_scans').insert({retailer_id:retailer.id,started_at:start,status:'running'}).select('id').single()
     const stats={retailer:retailer.name,discovered:0,checked:0,parsed:0,saleCandidates:0,sizeMatches:0,sizeVerified:0,deals:0,images:0,adapterVariants:0,adapterSources:{},stockTrue:0,stockFalse:0,stockUnknown:0,saleSizeOverlap:0,dealThresholdPass:0,dealThresholdFail:0,productPriceFallbacks:0,rejectedNoMarkdown:0,rejectedValue:0,rejectedRelevance:0,rateLimited:0,errors:0}
     const errors=[]
@@ -273,7 +275,7 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
       await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),last_successful_scan_at:new Date().toISOString(),scan_status:'success'}).eq('id',retailer.id)
       await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,new_deals:stats.deals,errors:[diagnostic,...errors].slice(0,30),status:'success'}).eq('id',scan.id)
     }catch(e){errors.push({error:String(e.message||e)});stats.errors=errors.length;await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),scan_status:'error'}).eq('id',retailer.id);if(scan?.id)await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,errors,status:'error'}).eq('id',scan.id)}
-    summary.push(stats)
-  }
+    return stats
+  },0)
   return summary
 }
