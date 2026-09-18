@@ -1,28 +1,28 @@
-import { waitUntil } from '@vercel/functions'
 import { json, requireUser } from './_lib/admin.js'
-import { scanRetailers } from './_lib/scanner.js'
-
-export const maxDuration = 300
 
 export default async function handler(req,res){
   if(req.method!=='POST') return json(res,405,{error:'POST required'})
   try{
-    const { admin, user } = await requireUser(req)
-    const startedAt = new Date().toISOString()
-
-    // IMPORTANT: return to the phone immediately, then let Vercel own the work.
-    // waitUntil keeps the function alive after the HTTP response is sent, so iOS
-    // can suspend/close the PWA without aborting the retailer scan.
-    waitUntil((async()=>{
-      try{
-        await scanRetailers(admin,{productsPerRetailer:24})
-      }catch(err){
-        console.error('Background retailer scan failed', { userId:user?.id, error:err?.stack||err?.message||String(err) })
-      }
-    })())
-
-    return json(res,202,{ok:true,accepted:true,startedAt,message:'Scan is running in the background. You can leave or close the app.'})
-  }catch(e){
-    return json(res,e.message==='Unauthorized'?401:500,{error:e.message||'Could not start scan'})
-  }
+    await requireUser(req)
+    const token=process.env.GITHUB_ACTIONS_TOKEN
+    const owner=process.env.GITHUB_OWNER
+    const repo=process.env.GITHUB_REPO
+    const ref=process.env.GITHUB_REF||'main'
+    const workflow=process.env.GITHUB_SCAN_WORKFLOW||'for-hollie-browser-scan.yml'
+    if(!token||!owner||!repo){
+      return json(res,503,{error:'Browser scanner is not connected yet. Add GITHUB_ACTIONS_TOKEN, GITHUB_OWNER, and GITHUB_REPO to Vercel.'})
+    }
+    const r=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`,{
+      method:'POST',
+      headers:{
+        authorization:`Bearer ${token}`,
+        accept:'application/vnd.github+json',
+        'x-github-api-version':'2022-11-28',
+        'user-agent':'For-Hollie-App'
+      },
+      body:JSON.stringify({ref})
+    })
+    if(!r.ok){const body=await r.text();throw new Error(`GitHub browser scan dispatch failed (${r.status}): ${body.slice(0,180)}`)}
+    return json(res,202,{ok:true,accepted:true,startedAt:new Date().toISOString(),message:'Browser scan queued in GitHub Actions. You can leave or close the app.'})
+  }catch(e){return json(res,e.message==='Unauthorized'?401:500,{error:e.message||'Could not start browser scan'})}
 }

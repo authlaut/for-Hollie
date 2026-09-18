@@ -1,3 +1,6 @@
+FOR HOLLIE v8.4.0
+See V8.4.0-README-FIRST.txt before deploying.
+
 FOR HOLLIE — START HERE (NO TERMINAL)
 
 1) In GitHub Desktop:

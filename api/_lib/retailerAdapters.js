@@ -20,25 +20,13 @@ const plausibleSize = v => {
   return /^(?:00|0|[1-6]|[1-6]X|[1-6]XL|4XS|3XS|2XS|XS|S|M|L|XL|2XL|3XL|4XL|5XL|6XL|[0-9]{1,2}(?:\.[05])?|[0-9]{2}(?:[A-H]|AA|DD|DDD|F|G|H)|(?:10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40)W?|(?:00-0|2-4|6-8|10-12|14-16|18-20|20-24|22-24|24-26|26-28|30-32|34-36|38-40))$/i.test(compact)
 }
 
-const normalizedSize = v => clean(v).replace(/&nbsp;/gi,' ').replace(/^(?:US\s*)?Size\s*[:#-]?\s*/i,'').replace(/^US\s+/i,'').replace(/\b(?:regular|reg|short|long|petite|tall)\b/ig,'').replace(/\((?:22|24|26)[-\/]?(?:24|26|28)\)/g,'').replace(/\s+/g,' ').trim()
+const normalizedSize = v => clean(v).replace(/&nbsp;/gi,' ').replace(/^(?:US\s*)?Size\s*[:#-]?\s*/i,'').replace(/^US\s+/i,'').replace(/\s+/g,' ').trim()
 
 function htmlDecode(s=''){return String(s).replace(/&amp;/g,'&').replace(/&quot;/g,'\"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>')}
 
-function canonicalSizeLabel(v=''){
-  let s=htmlDecode(String(v)).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()
-  // Retailers often render "24W Regular", "3X (24-26)", or "3XL / 24-26".
-  const numeric=s.match(/\b(24W?|22W?|26W?)\b/i)
-  if(numeric && /\b(?:regular|short|long|petite|tall|womens?|plus)\b/i.test(s)) return numeric[1]
-  const alpha=s.match(/\b([1-6](?:X|XL)|3XL)\b/i)
-  if(alpha) return alpha[1].replace(/3XL/i,'3X')
-  const grouped=s.match(/\b(22[-\/]24|24[-\/]26|26[-\/]28)\b/i)
-  if(grouped) return grouped[1].replace('/','-')
-  return normalizedSize(s)
-}
-
 function sizeControlEvidence(html){
   const found=[]
-  const push=(size,inStock,source)=>{size=canonicalSizeLabel(size);if(plausibleSize(size))found.push({size,inStock,source})}
+  const push=(size,inStock,source)=>{size=normalizedSize(htmlDecode(size));if(plausibleSize(size))found.push({size,inStock,source})}
 
   // Select menus whose name/id/class clearly indicates sizing. An enabled option is selectable.
   const selectRe=/<select\b([^>]*)>([\s\S]*?)<\/select>/gi; let sm
@@ -73,10 +61,6 @@ function sizeControlEvidence(html){
   const attrRe=/<[^>]+\bdata-(?:size|size-value)=["']([^"']+)["'][^>]*>/gi; let am
   while((am=attrRe.exec(html))){const tag=am[0];const disabled=/disabled|sold.?out|unavailable|out.?of.?stock/i.test(tag);push(am[1],!disabled,'data-size')}
 
-  // Fallback for commerce UIs that expose sizes only in aria/data labels.
-  const broad=/<[^>]+(?:aria-label|data-value|data-option-value|data-variation-value)=["']([^"']+)["'][^>]*>/gi; let bm
-  while((bm=broad.exec(html))){const tag=bm[0],label=bm[1];const size=canonicalSizeLabel(label);if(!plausibleSize(size))continue;const disabled=/disabled|aria-disabled=["']true|sold.?out|unavailable|out.?of.?stock/i.test(tag);push(size,!disabled,'broad-size-control')}
-
   const map=new Map()
   for(const x of found){const k=normalizedSize(x.size).toLowerCase(); const old=map.get(k); if(!old || old.inStock!==true)map.set(k,x)}
   return [...map.values()]
@@ -97,9 +81,7 @@ function enrichWithControlStock(variants, html){
 function mergeVariants(primary=[], secondary=[]){
   const out=[]; const seen=new Set()
   for(const v of [...primary,...secondary]){
-    if(!v) continue
-    v={...v,size:canonicalSizeLabel(v.size)}
-    if(!plausibleSize(v.size)) continue
+    if(!v || !plausibleSize(v.size)) continue
     const key=`${clean(v.size).toLowerCase()}|${clean(v.color).toLowerCase()}|${clean(v.sku)}`
     if(seen.has(key)) continue
     seen.add(key); out.push(v)
@@ -149,7 +131,7 @@ function parseShopify(data, parsed){
     const price = rawPrice && rawPrice > 1000 ? rawPrice/100 : rawPrice
     const regular = rawCompare && rawCompare > 1000 ? rawCompare/100 : rawCompare
     return {
-      size: canonicalSizeLabel(size),
+      size: clean(size),
       color: clean(color)||null,
       sku: clean(v.sku || v.id)||null,
       price: price || parsed?.currentPrice || null,
@@ -188,7 +170,7 @@ function parseEmbeddedVariants(html, parsed){
     const sizeKey=keys.find(k=>/^(size|sizeName|displaySize|label|value)$/i.test(k) && typeof n[k] !== 'object') ||
                   keys.find(k=>/size/i.test(k) && typeof n[k] === 'string')
     if(!sizeKey) return
-    const size=canonicalSizeLabel(clean(n[sizeKey]).replace(/^size\s*:?\s*/i,''))
+    const size=clean(n[sizeKey]).replace(/^size\s*:?\s*/i,'')
     if(!plausibleSize(size)) return
     const inStock=stockBool(n.available ?? n.inStock ?? n.orderable ?? n.selectable ?? n.inventoryStatus ?? n.stockStatus ?? n.availability)
     const p=money(n.salePrice ?? n.currentPrice ?? n.price ?? n.finalPrice ?? n.offerPrice)

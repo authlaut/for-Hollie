@@ -1,9 +1,4 @@
-import { adminClient, json } from './_lib/admin.js'
-import { scanRetailers } from './_lib/scanner.js'
-export const maxDuration = 300
+import { json } from './_lib/admin.js'
 export default async function handler(req,res){
-  const secret=process.env.CRON_SECRET
-  const auth=req.headers.authorization||''
-  if(secret && auth!==`Bearer ${secret}`) return json(res,401,{error:'Unauthorized'})
-  try{const summary=await scanRetailers(adminClient(),{productsPerRetailer:52});return json(res,200,{ok:true,summary})}catch(e){return json(res,500,{error:e.message||'Scan failed'})}
+  return json(res,410,{error:'For Hollie v8.4.0 retired the Vercel HTML scanner. Use the GitHub Actions Playwright browser scanner.'})
 }
