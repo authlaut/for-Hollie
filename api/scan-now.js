@@ -4,13 +4,13 @@ export default async function handler(req,res){
   if(req.method!=='POST') return json(res,405,{error:'POST required'})
   try{
     await requireUser(req)
-    const token=process.env.GITHUB_ACTIONS_TOKEN
-    const owner=process.env.GITHUB_OWNER
-    const repo=process.env.GITHUB_REPO
-    const ref=process.env.GITHUB_REF||'main'
-    const workflow=process.env.GITHUB_SCAN_WORKFLOW||'for-hollie-browser-scan.yml'
-    if(!token||!owner||!repo){
-      return json(res,503,{error:'Browser scanner is not connected yet. Add GITHUB_ACTIONS_TOKEN, GITHUB_OWNER, and GITHUB_REPO to Vercel.'})
+    const token=process.env.FOR_HOLLIE_ACTIONS_TOKEN
+    const owner=process.env.FOR_HOLLIE_GITHUB_OWNER||'authlaut'
+    const repo=process.env.FOR_HOLLIE_GITHUB_REPO||'for-Hollie'
+    const ref=process.env.FOR_HOLLIE_GITHUB_REF||'main'
+    const workflow=process.env.FOR_HOLLIE_SCAN_WORKFLOW||'for-hollie-browser-scan.yml'
+    if(!token){
+      return json(res,503,{error:'Browser scanner is not connected yet. Add FOR_HOLLIE_ACTIONS_TOKEN to Vercel.'})
     }
     const r=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`,{
       method:'POST',
