@@ -1,0 +1,13 @@
+FOR HOLLIE v8.3.3 — RETAILER ADAPTER DIAGNOSTIC REPAIR
+Build: 2026-09-18
+
+Changes:
+- Old Navy product.do?pid URLs are now recognized as product URLs.
+- Kohl's discovery filters out unrelated home/kitchen/men's catalog items before consuming scan budget.
+- Scanner Health no longer labels 0-discovered or blocked scans Healthy.
+- Size matches with zero verified variants are explicitly flagged Needs Adapter.
+- Returning to the app automatically refreshes the saved feed.
+- Manual scan copy makes clear results are saved server-side as retailers finish.
+- Keeps v8.3.1 provenance/men's-catalog protections and exact-size rules.
+
+No database migration required.

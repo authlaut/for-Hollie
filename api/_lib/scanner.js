@@ -2,8 +2,19 @@ import { fetchProduct, sizeMatches, inferCategory } from './productParser.js'
 import { retailerVariants } from './retailerAdapters.js'
 
 function xmlLocs(xml){return [...xml.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)].map(m=>m[1].replace(/&amp;/g,'&'))}
-function productish(url){return /\/product\/|\/p\/|\/products?\/|\.html(?:\?|$)|\/item\//i.test(url) && !/category|collection|search|blog|help|store|account|cart/i.test(url)}
+function productish(url){return /\/product\/|\/p\/|\/products?\/|\.html(?:\?|$)|\/item\/|product\.do\?[^#]*\bpid=/i.test(url) && !/blog|help|store\/locator|account|cart/i.test(url)}
 function saleish(url){return /sale|clearance|outlet|last-chance|deals|markdown/i.test(url)}
+function discoveryRelevant(retailer,url){
+  const s=String(url||'').toLowerCase()
+  // Do not spend a retailer's limited verification budget on obviously irrelevant
+  // departments. Kohl's sitemaps in particular mix apparel with the entire store.
+  if(retailer.slug==='kohls'){
+    if(/farberware|oneida|cookware|flatware|kitchen|home-decor|bedding|electronics|toy|men-|mens-|boys-|girls-|kids-/.test(s))return false
+    return /women|plus|jean|denim|pant|legging|cardigan|sweater|jacket|coat|top|shirt|blouse|bra|intimate|dress|shoe|boot|flat|sneaker|pajama|active/.test(s)
+  }
+  if(/\/men(?:s)?\/|\/boys?\/|\/girls?\/|\/kids?\//.test(s))return false
+  return true
+}
 async function textFetch(url,timeout=9000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const r=await fetch(url,{signal:c.signal,redirect:'follow',headers:{'user-agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152 Safari/537.36','accept':'text/html,application/xml,text/xml;q=0.9,*/*;q=0.8','accept-language':'en-US,en;q=0.9'}});if(!r.ok)throw new Error(`${r.status}`);return await r.text()}finally{clearTimeout(t)}}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 function normalizeRetailerUrl(retailer,url){try{const u=new URL(url);u.hash='';if(retailer.slug==='glamorise')u.pathname=u.pathname.replace(/^\/en-ca(?=\/)/i,'');for(const k of [...u.searchParams.keys()])if(/^(utm_|fbclid|gclid|variant$)/i.test(k))u.searchParams.delete(k);return u.href}catch{return url}}
@@ -31,11 +42,11 @@ async function discoverFromSalePages(retailer,max=140){
     if(candidates.length>=max)break
     try{
       const html=await textFetch(page,9000); const links=linksFromHtml(html,page)
-      for(const u of links){if(productish(u)){candidates.push(u);if(candidates.length>=max)break}}
+      for(const u of links){if(productish(u)&&discoveryRelevant(retailer,u)){candidates.push(u);if(candidates.length>=max)break}}
       // Follow one pagination/category layer when it is clearly a sale/clearance page.
       for(const child of links.filter(x=>saleish(x)&&!productish(x)).slice(0,2)){
         if(candidates.length>=max)break
-        try{const h=await textFetch(child,7000);for(const u of linksFromHtml(h,child)){if(productish(u)){candidates.push(u);if(candidates.length>=max)break}}}catch{}
+        try{const h=await textFetch(child,7000);for(const u of linksFromHtml(h,child)){if(productish(u)&&discoveryRelevant(retailer,u)){candidates.push(u);if(candidates.length>=max)break}}}catch{}
       }
     }catch{}
   }
@@ -47,7 +58,7 @@ async function discoverFromSitemaps(retailer,max=500){
   try{const robots=await textFetch(new URL('/robots.txt',base).href,6000);sitemapUrls=[...robots.matchAll(/^sitemap:\s*(.+)$/gim)].map(m=>m[1].trim())}catch{}
   if(!sitemapUrls.length) sitemapUrls=[new URL('/sitemap.xml',base).href]
   const out=[]; const queue=sitemapUrls.slice(0,8); const visited=new Set()
-  while(queue.length && out.length<max && visited.size<30){const sm=queue.shift();if(visited.has(sm))continue;visited.add(sm);try{const xml=await textFetch(sm,9000);for(const loc of xmlLocs(xml)){if(out.length>=max)break;if(productish(loc))out.push(loc);else if(/sitemap/i.test(loc)&&queue.length<30)queue.push(loc)}}catch{}}
+  while(queue.length && out.length<max && visited.size<30){const sm=queue.shift();if(visited.has(sm))continue;visited.add(sm);try{const xml=await textFetch(sm,9000);for(const loc of xmlLocs(xml)){if(out.length>=max)break;if(productish(loc)&&discoveryRelevant(retailer,loc))out.push(loc);else if(/sitemap/i.test(loc)&&queue.length<30)queue.push(loc)}}catch{}}
   return [...new Set(out)].slice(0,max)
 }
 
@@ -272,7 +283,8 @@ export async function scanRetailers(admin,{limitRetailers=11,productsPerRetailer
       for(const r of results.filter(Boolean)){for(const k of ['checked','parsed','saleCandidates','sizeMatches','sizeVerified','deals','images','adapterVariants','stockTrue','stockFalse','stockUnknown','saleSizeOverlap','dealThresholdPass','dealThresholdFail','productPriceFallbacks','rejectedNoMarkdown','rejectedValue','rejectedRelevance'])stats[k]+=r[k]||0; const src=r.adapterSource||'generic';stats.adapterSources[src]=(stats.adapterSources[src]||0)+1}
       stats.errors=errors.length
       const diagnostic={type:'diagnostic',discovered:stats.discovered,parsed:stats.parsed,saleCandidates:stats.saleCandidates,sizeMatches:stats.sizeMatches,sizeVerified:stats.sizeVerified,images:stats.images,adapterVariants:stats.adapterVariants,adapterSources:stats.adapterSources,stockTrue:stats.stockTrue,stockFalse:stats.stockFalse,stockUnknown:stats.stockUnknown,saleSizeOverlap:stats.saleSizeOverlap,dealThresholdPass:stats.dealThresholdPass,dealThresholdFail:stats.dealThresholdFail,productPriceFallbacks:stats.productPriceFallbacks,rejectedNoMarkdown:stats.rejectedNoMarkdown,rejectedValue:stats.rejectedValue,rateLimited:stats.rateLimited,scanConcurrency:pace.concurrency,scanDelayMs:pace.delayMs}
-      await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),last_successful_scan_at:new Date().toISOString(),scan_status:'success'}).eq('id',retailer.id)
+      const scanStatus = stats.discovered===0 ? 'error' : (stats.checked===0 || (stats.sizeMatches>0 && stats.sizeVerified===0) ? 'attention' : 'success')
+      await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),...(scanStatus==='success'?{last_successful_scan_at:new Date().toISOString()}:{}),scan_status:scanStatus}).eq('id',retailer.id)
       await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,new_deals:stats.deals,errors:[diagnostic,...errors].slice(0,30),status:'success'}).eq('id',scan.id)
     }catch(e){errors.push({error:String(e.message||e)});stats.errors=errors.length;await admin.from('fh_retailers').update({last_scan_at:new Date().toISOString(),scan_status:'error'}).eq('id',retailer.id);if(scan?.id)await admin.from('fh_retailer_scans').update({finished_at:new Date().toISOString(),products_checked:stats.checked,deals_found:stats.deals,errors,status:'error'}).eq('id',scan.id)}
     return stats
