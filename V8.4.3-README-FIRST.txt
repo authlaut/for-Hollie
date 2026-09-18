@@ -1,0 +1,22 @@
+FOR HOLLIE v8.4.3 — BUILD PIPELINE FIX
+
+WHY THIS BUILD EXISTS
+Vercel successfully ran Vite but the generated production HTML still referenced /src/main.jsx, producing a text/jsx MIME error and a white screen. The build log showed only 2 transformed modules and a tiny ~0.7 KB bundle.
+
+WHAT CHANGED
+- Production build no longer uses index.html as Vite's build entry.
+- scripts/build-production.mjs builds directly from src/main.jsx and its full React dependency graph.
+- The script writes dist/index.html itself and points it only at /assets/app.js.
+- Public/PWA assets are copied into dist.
+- This prevents raw JSX from ever being requested by the production browser.
+- Browser scanner/GitHub Actions architecture from v8.4.2 is preserved.
+
+EXPECTED VERCEL BUILD LOG
+- npm run build
+- node scripts/build-production.mjs
+- many modules transformed (not 2)
+- dist/assets/app.js should be far larger than 0.7 KB
+- Production build complete. Entry: dist/assets/app.js
+
+DEPLOY
+Replace the repository contents on main with this package while preserving .git, commit, push, then redeploy. Do not merge an older scanner branch into it.

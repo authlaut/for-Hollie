@@ -1,4 +1,4 @@
-FOR HOLLIE v8.4.2 — CLEAN RECOVERY BUILD
+FOR HOLLIE v8.4.3 — CLEAN RECOVERY BUILD
 
 Purpose
 -------
@@ -13,7 +13,7 @@ IMPORTANT CLEAN REPLACEMENT
    - Do not delete .git.
 5. Copy all files/folders from this package into the repository folder.
 6. Return to GitHub Desktop.
-7. Commit to main with message: v8.4.2 clean recovery
+7. Commit to main with message: v8.4.3 clean recovery
 8. Push origin.
 9. In Vercel, redeploy main WITHOUT using the old build cache if that option is shown.
 
@@ -46,6 +46,6 @@ Root directory: ./
 
 After deployment
 ----------------
-Settings > About should show 8.4.2.
+Settings > About should show 8.4.3.
 Then GitHub > Actions should show "For Hollie Browser Scanner".
 Use Run workflow once manually before testing the in-app Scan Retailers button.

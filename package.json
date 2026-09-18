@@ -1,11 +1,11 @@
 {
   "name": "for-hollie",
   "private": true,
-  "version": "8.4.2",
+  "version": "8.4.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/build-production.mjs",
     "preview": "vite preview",
     "scan:browser": "node scripts/browser-scan.mjs"
   },
