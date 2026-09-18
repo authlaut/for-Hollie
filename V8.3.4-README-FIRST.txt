@@ -1,0 +1,37 @@
+FOR HOLLIE v8.3.4 — BACKGROUND SCAN FIX
+
+WHY THIS BUILD EXISTS
+The manual Scan Retailers action was tied to one long HTTP request from the iPhone/PWA.
+When iOS backgrounded the app, that browser request could be suspended or cancelled.
+The app then returned to a failed/load-failed state even though the scan was supposed to
+continue independently.
+
+WHAT CHANGED
+1. /api/scan-now now returns HTTP 202 immediately.
+2. The actual retailer scan is handed to Vercel waitUntil(), so Vercel owns the work
+   after the phone receives the response.
+3. Leaving the Deals screen, switching apps, locking the phone, or closing the PWA no
+   longer cancels the scan request from the client side.
+4. Added /api/scan-status so the app can see whether retailer work is still running.
+5. Deals polls scan status only while visible and reloads saved server results when the
+   app becomes visible again.
+6. Previously saved deals remain visible even if a feed refresh fails.
+7. No Supabase migration is required.
+
+IMPORTANT DEPLOYMENT NOTE
+This build adds the official @vercel/functions package because waitUntil() is a Vercel
+runtime capability. package.json pins @vercel/functions to 3.9.8.
+
+TEST
+- Deploy to Vercel.
+- Confirm Settings > About says 8.3.4.
+- Tap Scan Retailers.
+- Within about a second the button should stop waiting on the full scan and the message
+  should say the scan is running in the background.
+- Leave/close the app for several minutes.
+- Reopen Deals. It should load the saved feed and report scan status instead of Load failed.
+
+NOTE
+Vercel background work still must finish within the Function execution duration for the
+project/plan. The current manual scan uses the existing 300-second maxDuration and the
+24-products-per-retailer budget from v8.3.3.
