@@ -1,0 +1,12 @@
+For Hollie v8.3.2 — Retailer Scan Recovery
+
+What changed
+- Manual Scan Retailers now uses a faster 24-product/store pass so it can finish inside Vercel's execution window.
+- Up to 3 retailers scan concurrently; a slow or blocked retailer can no longer hold up the whole run.
+- Retailer failures remain isolated. Successful retailer results are saved and shown even when another store errors.
+- Scan status now reports how many retailers updated instead of reducing the entire run to “Scan failed.”
+- Discovery priority is Jeans/Bottoms first, Cardigans/Layers second, then Tops and other categories.
+- Best for Hollie gets an explicit ranking boost for jeans/denim and cardigans/layers.
+- v8.3.1 retailer provenance and wrong/men's-product protections remain in place.
+
+No database migration required.

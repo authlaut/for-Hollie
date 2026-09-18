@@ -1,0 +1,102 @@
+FOR HOLLIE v8.4.1 — BROWSER SCANNER
+===================================
+
+WHY THIS RELEASE EXISTS
+-----------------------
+The old Vercel scanner fetched retailer HTML directly. Several watched stores either blocked those requests (403), rendered size/inventory state only after JavaScript ran, or returned incomplete/stale product HTML. v8.4.1 moves retailer verification into a real Chromium browser running in GitHub Actions.
+
+WHAT CHANGED
+------------
+• Playwright/Chromium browser scanner runs every 4 hours in GitHub Actions.
+• Jeans and cardigans/layers are prioritized during discovery.
+• Exact in-stock Hollie size is checked from rendered size controls on product pages.
+• Bottoms remain STRICT: only size 24/24W is accepted; 22/26 and 24/26 are not exact bottoms matches.
+• Product URLs, current price, regular price, stock state, product image and size are saved to the existing Supabase tables.
+• Stale deals are automatically removed from the feed after a successful retailer verification pass.
+• Glamorise is capped so a single bra brand cannot dominate the feed.
+• The old Vercel HTML scanner is retired.
+• The in-app Scan Retailers button now dispatches the GitHub Actions browser workflow and returns immediately, so the phone can be closed or backgrounded.
+• Scanner Health identifies the adapter as browser-playwright.
+
+NO DATABASE MIGRATION IS REQUIRED.
+
+ONE-TIME GITHUB SETUP
+---------------------
+In the GitHub repository, open Settings > Secrets and variables > Actions and add these repository secrets:
+
+1. SUPABASE_URL
+   Your Supabase project URL.
+
+2. SUPABASE_SERVICE_ROLE_KEY
+   Your Supabase service-role key. Keep this secret. It is used only inside GitHub Actions and must NEVER be prefixed VITE_ or exposed to browser code.
+
+The workflow file is:
+.github/workflows/for-hollie-browser-scan.yml
+
+It runs automatically every 4 hours and can also be run manually from GitHub Actions.
+
+ONE-TIME VERCEL SETUP FOR THE APP'S “SCAN RETAILERS” BUTTON
+------------------------------------------------------------
+Add these Vercel Environment Variables to the For Hollie project:
+
+FOR_HOLLIE_ACTIONS_TOKEN
+  A fine-grained GitHub token with Actions: Read and write permission for ONLY the For Hollie repository.
+
+FOR_HOLLIE_GITHUB_OWNER
+  Your GitHub username/organization that owns the repository.
+
+FOR_HOLLIE_GITHUB_REPO
+  The repository name, for example: hollie-and-me (use your actual For Hollie repository name).
+
+GITHUB_REF
+  main
+  (Optional; main is used by default.)
+
+GITHUB_SCAN_WORKFLOW
+  for-hollie-browser-scan.yml
+  (Optional; this is the default.)
+
+After adding Vercel environment variables, REDEPLOY so the server functions receive them.
+
+FIRST TEST
+----------
+1. Deploy v8.4.1.
+2. Confirm Settings > About shows 8.4.0.
+3. In GitHub > Actions, manually run “For Hollie Browser Scanner” once.
+4. Watch the action log. Chromium will open retailer pages and verify rendered sizes.
+5. In the app, open Settings > Deal Scanner & Health and tap Refresh.
+6. Successful rows should report Adapter: browser-playwright.
+7. Confirm the Deals feed contains only currently verified exact-size products.
+8. Then test the in-app Scan Retailers button. It should say the browser scan was queued and you may leave the app.
+
+IMPORTANT NOTES
+---------------
+• This scanner does NOT bypass CAPTCHAs or retailer anti-bot challenges. If a site presents a challenge, the store is recorded as blocked/attention rather than fabricating inventory.
+• Retailer markup changes over time. Scanner Health remains the place to diagnose a store when its rendered product controls change.
+• v8.4.1 intentionally favors accuracy over filling the feed with uncertain products.
+• Kohl's may still challenge automated Chromium sessions. The app will report that honestly instead of treating unverified products as live deals.
+
+FILES ADDED
+-----------
+.github/workflows/for-hollie-browser-scan.yml
+scripts/browser-scan.mjs
+scripts/browser-scanner/config.mjs
+scripts/browser-scanner/db.mjs
+scripts/browser-scanner/extract.mjs
+scripts/browser-scanner/runner.mjs
+scripts/browser-scanner/utils.mjs
+
+VERSION
+-------
+For Hollie 8.4.0
+Deal Engine: Browser Scanner
+Scanner: Playwright Chromium + GitHub Actions
+Build: 2026.09.18
+Database: Existing V8-compatible Supabase schema
+
+
+V8.4.1 CONFIG FIX
+• GitHub reserves secret names beginning with GITHUB_.
+• Supabase scanner secrets stay in GitHub Actions: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+• The in-app Scan Retailers button is served by Vercel, so FOR_HOLLIE_ACTIONS_TOKEN belongs in Vercel Environment Variables, not GitHub Actions secrets.
+• Owner/repo default to authlaut / for-Hollie. Optional Vercel overrides: FOR_HOLLIE_GITHUB_OWNER, FOR_HOLLIE_GITHUB_REPO, FOR_HOLLIE_GITHUB_REF.

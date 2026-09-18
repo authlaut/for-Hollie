@@ -1,0 +1,27 @@
+FOR HOLLIE V8.2 — ADAPTIVE RETAILER INTELLIGENCE
+
+Built from the recovered, working V8.1.1 branch.
+
+WHAT CHANGED
+- Increased scan budget to 44 product pages per retailer per manual/cron run.
+- Retailer-specific pacing for Glamorise, BloomChic, and Universal Standard.
+- Automatic exponential backoff/retry for HTTP 429 rate limits.
+- Glamorise Canadian /en-ca product URLs normalize to the US storefront before scanning.
+- Common size labels such as “US Size 24-26” normalize before exact-size matching.
+- Value qualification now allows worthwhile 20–49% markdowns when final price is strong for the category; full-price products still do not qualify.
+- Existing implausible-price protections remain in place (including >90% and category-specific regular-price/ratio guards).
+- Settings Scanner Health now reports qualified/value-rejected/rate-limited counts and distinguishes Rate Limited / Needs Adapter states.
+- App version is 8.2.0.
+
+INSTALL / TEST
+1. Keep the current V8.1.1 branch untouched as the recovery point.
+2. Create/switch to a new branch named v8.2-scanner.
+3. Copy the CONTENTS of this package into the repository root, replacing matching files. Do not replace/delete .git.
+4. Commit and publish the v8.2-scanner branch.
+5. Let Vercel create a PREVIEW deployment. Do not promote to Production yet.
+6. Confirm Preview environment variables are enabled as they were for V8.1.1.
+7. Open Settings > About and verify v8.2.0.
+8. Run Scan Retailers once, then inspect Deals and Settings > Scanner Health.
+9. Compare: total checked, exact-size verified, qualified deals, rate-limited count, and retailer coverage.
+
+NO DATABASE MIGRATION IS REQUIRED for this V8.2 patch.

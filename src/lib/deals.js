@@ -1,5 +1,23 @@
 import { supabase, supabaseConfigured } from './supabase'
 
+const DISPLAY_PRICE_CAPS={Tops:250,Layers:600,Bottoms:350,Dresses:400,Intimates:200,Lounge:250,Shoes:300,Active:300,Swim:300,Accessories:500}
+function saneDealPrice(sale,regular,category){sale=Number(sale);regular=Number(regular);if(!Number.isFinite(sale)||!Number.isFinite(regular)||sale<=0||regular<=sale)return false;const cap=DISPLAY_PRICE_CAPS[category]||500;return regular<=cap && regular/sale<=8 && (1-sale/regular)<=0.9}
+
+
+function retailerProvenanceOk(store,slug,url,name=''){
+  let host='';try{host=new URL(url||'').hostname.toLowerCase().replace(/^www\./,'')}catch{return false}
+  const expected={
+    eloquii:'eloquii.com',torrid:'torrid.com','lane-bryant':'lanebryant.com',maurices:'maurices.com',
+    'lands-end':'landsend.com','universal-standard':'universalstandard.com','old-navy':'oldnavy.gap.com',
+    kohls:'kohls.com',jcpenney:'jcpenney.com',bloomchic:'bloomchic.com',glamorise:'glamorise.com'
+  }[slug]
+  if(expected && !(host===expected||host.endsWith(`.${expected}`))) return false
+  const hay=`${store||''} ${name||''} ${url||''}`.toLowerCase()
+  if(/(?:\bmen'?s\b|\bmenswear\b|\bbig\s*&?\s*tall\b|\bking\s*size\b|\bkingsize\b|\bks\s+island\b|\bswim\s+trunks?\b|\bboard\s*shorts?\b)/i.test(hay))return false
+  if(slug==='eloquii' && /\b(?:woman\s+within|roaman'?s|jessica\s+london|swimsuits?\s*for\s*all|king\s*size|kingsize)\b/i.test(hay))return false
+  return true
+}
+
 function hoursAgo(dateText) {
   if (!dateText) return Infinity
   return (Date.now() - new Date(dateText).getTime()) / 36e5
@@ -45,9 +63,8 @@ export async function loadLiveDeals(userId) {
     if (!minPrice.has(h.product_id) || p<minPrice.get(h.product_id)) minPrice.set(h.product_id,p)
   }
 
-  const sane = d => { const sale=Number(d.sale_price), reg=Number(d.regular_price); const caps={Tops:[250,6],Layers:[600,7],Bottoms:[350,6],Dresses:[400,7],Intimates:[200,6],Lounge:[250,6],Shoes:[300,6],Active:[300,6],Swim:[300,6],Accessories:[500,8]}; const [cap,ratio]=caps[d.product?.primary_category]||[500,8]; return Number.isFinite(sale)&&Number.isFinite(reg)&&sale>0&&reg>sale&&reg<=cap&&reg/sale<=ratio }
   const deals = (dealRows||[])
-    .filter(d => sane(d) && d.product?.active !== false && d.variant?.size_verified === true && d.variant?.inventory_status === 'verified_in_stock' && d.variant?.in_stock !== false)
+    .filter(d => saneDealPrice(d.sale_price,d.regular_price,d.product?.primary_category) && retailerProvenanceOk(d.product?.retailer?.name,d.product?.retailer?.slug,d.product?.canonical_url,d.product?.product_name) && d.product?.active !== false && d.variant?.size_verified === true && d.variant?.inventory_status === 'verified_in_stock' && d.variant?.in_stock !== false)
     .map(d => {
       const tags=d.product?.tags||[]
       const occasion=tags.filter(t=>t.tag_type==='occasion').map(t=>t.tag_value)
@@ -67,7 +84,7 @@ export async function loadLiveDeals(userId) {
         discount:Math.round(Number(d.discount_percent ?? 0)),
         size:d.variant?.size || d.variant?.size_normalized || 'Verified size',
         match:Math.round(Number(score?.final_score ?? 0)),
-        valueScore:Math.round(Math.min(100, Number(d.discount_percent||0)*0.72 + Math.max(0,28-(Number(d.sale_price||0)/3)))),
+        valueScore:Math.round(Math.min(100, Number(d.discount_percent||0)*0.72 + Math.max(0,100-(Number(d.sale_price||0)/55)*55)*0.28)),
         reason:score?.reason_summary || 'Verified deal in Hollie’s size',
         badge:quality==='exceptional'?'Exceptional':quality==='strong_buy'?'Strong Buy':quality==='wildcard'?'Wildcard':'Good Wardrobe Add',
         level:quality==='exceptional'?'exceptional':'strong',

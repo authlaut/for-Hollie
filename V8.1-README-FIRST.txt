@@ -1,0 +1,28 @@
+FOR HOLLIE V8.1 CLEAN BUILD
+Built directly from the recovered V7.1 commit 80ebaca supplied by Chris.
+
+WHAT IS IN THIS BUILD
+- Preserves the known-working V7.1 app shell, authentication, navigation, wardrobe, outfits and watchlist.
+- Deals screen stays shopping-focused; full retailer scan details move to Settings > Deal Scanner & Health.
+- Home summary cards are actionable. Exceptional opens Deals filtered to Exceptional; New Today opens New; Qualifying Deals opens all deals; wardrobe count opens Wardrobe.
+- Read-time price sanity guard prevents old impossible database records from rendering even before a fresh scan.
+- Scanner write-time price guard rejects impossible category reference prices, ratios over policy, and >90% markdown anomalies.
+- Scanner depth increased to 24 products per retailer per run with rotating discovery coverage.
+- Worthwhile 25-49% deals remain eligible based on category/final price; 70% is not an admission requirement.
+- Watch and Not Accurate failures now show a visible error instead of silently doing nothing.
+- Settings includes per-retailer Healthy / Attention / Problem status, discovered/checked counts, size matches, verifications, markdowns, accepted deals, adapter source, and errors.
+- About shows V8.1.0 and Copy Diagnostics.
+
+SAFE DEPLOYMENT
+1. KEEP the current V7.1 production deployment live.
+2. In GitHub Desktop, remain on v7-working-recovery and create a new branch from it named v8-clean-build.
+3. Copy the CONTENTS of this ZIP into the repository folder and replace matching files.
+4. Commit to v8-clean-build. Do not merge to main yet.
+5. Publish the branch.
+6. In Vercel, deploy/inspect the v8-clean-build PREVIEW only.
+7. Confirm the build log shows vite build and a normal dist/assets JavaScript bundle.
+8. Open the Preview URL and test: sign in, Home, Exceptional card -> filtered Deals, Deals filters, Watch, Not Accurate, Settings > Deal Scanner & Health, Settings > About.
+9. Only after those tests pass should the preview be promoted/merged to production.
+
+DATABASE
+This build is designed to use the existing V7 feedback/scan tables already used by the recovered app. Do NOT rerun the earlier V8 migration just to install this package.

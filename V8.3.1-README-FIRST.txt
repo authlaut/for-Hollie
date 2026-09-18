@@ -1,0 +1,16 @@
+FOR HOLLIE V8.3.1 — RETAILER PROVENANCE HOTFIX
+Build: 2026.09.17
+
+FIXES
+- Rejects products that redirect outside the configured retailer storefront.
+- ELOQUII is restricted to eloquii.com product provenance, blocking shared FullBeauty/KingSize catalog contamination.
+- Hard-rejects unmistakable men’s / Big & Tall / KingSize / swim-trunk merchandise.
+- Client feed applies the same safety net, so previously contaminated rows disappear immediately after deployment.
+- Scanner quarantines previously stored products when they fail provenance/relevance validation.
+- Refresh failures preserve the last good feed and show: “Couldn’t refresh — showing your last verified deals.”
+- Adds “Wrong / men’s product” to Not Accurate feedback reasons.
+- No database migration required.
+
+DEPLOY
+Replace the repository contents with this package, commit, and deploy to a Vercel Preview first.
+Confirm Settings > About shows v8.3.1, then run Scan Retailers and verify ELOQUII no longer shows cross-catalog products.

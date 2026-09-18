@@ -13,5 +13,9 @@ export async function uploadWardrobeImage(file,userId){
 }
 export async function runRetailerScan(){
   const {data:{session}}=await supabase.auth.getSession(); if(!session)throw new Error('Please sign in again.')
-  const r=await fetch('/api/scan-now',{method:'POST',headers:{'authorization':`Bearer ${session.access_token}`}}); const body=await r.json().catch(()=>({})); if(!r.ok)throw new Error(body.error||'Scan failed'); return body
+  const r=await fetch('/api/scan-now',{method:'POST',headers:{'authorization':`Bearer ${session.access_token}`}}); const body=await r.json().catch(()=>({})); if(!r.ok)throw new Error(body.error||'Could not start scan'); return body
+}
+export async function getRetailerScanStatus(){
+  const {data:{session}}=await supabase.auth.getSession(); if(!session)throw new Error('Please sign in again.')
+  const r=await fetch('/api/scan-status',{headers:{'authorization':`Bearer ${session.access_token}`}}); const body=await r.json().catch(()=>({})); if(!r.ok)throw new Error(body.error||'Could not read scan status'); return body
 }

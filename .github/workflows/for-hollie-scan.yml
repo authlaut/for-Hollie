@@ -1,12 +1,8 @@
-name: For Hollie retailer scan
+name: For Hollie legacy scanner (disabled)
 on:
-  schedule:
-    - cron: '17 */4 * * *'
   workflow_dispatch:
 jobs:
-  scan:
+  notice:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger retailer scanner
-        run: |
-          curl --fail --retry 2 -H "Authorization: Bearer ${{ secrets.FOR_HOLLIE_CRON_SECRET }}" "${{ secrets.FOR_HOLLIE_SCAN_URL }}/api/scan-retailers"
+      - run: echo "For Hollie v8.4.1 uses .github/workflows/for-hollie-browser-scan.yml"
