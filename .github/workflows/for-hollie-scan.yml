@@ -5,4 +5,4 @@ jobs:
   notice:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "For Hollie v8.4.1 uses .github/workflows/for-hollie-browser-scan.yml"
+      - run: echo "For Hollie v8.4.2 uses .github/workflows/for-hollie-browser-scan.yml"

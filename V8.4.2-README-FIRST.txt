@@ -1,0 +1,51 @@
+FOR HOLLIE v8.4.2 — CLEAN RECOVERY BUILD
+
+Purpose
+-------
+This package was rebuilt from the known-working v8.3.4 frontend, then only the v8.4 browser-scanner pieces were added back. It is intended to replace the mixed/merge-conflicted main branch cleanly.
+
+IMPORTANT CLEAN REPLACEMENT
+---------------------------
+1. In GitHub Desktop, make sure Current branch = main.
+2. Abort any merge still in progress.
+3. Open the local for-Hollie repository folder in Explorer.
+4. DELETE the repository contents EXCEPT the hidden .git folder.
+   - Do not delete .git.
+5. Copy all files/folders from this package into the repository folder.
+6. Return to GitHub Desktop.
+7. Commit to main with message: v8.4.2 clean recovery
+8. Push origin.
+9. In Vercel, redeploy main WITHOUT using the old build cache if that option is shown.
+
+GitHub repository secrets required
+----------------------------------
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+
+Vercel environment variable required
+-------------------------------------
+FOR_HOLLIE_ACTIONS_TOKEN
+
+Optional Vercel overrides (not required for authlaut/for-Hollie)
+---------------------------------------------------------------
+FOR_HOLLIE_GITHUB_OWNER
+FOR_HOLLIE_GITHUB_REPO
+FOR_HOLLIE_GITHUB_REF
+FOR_HOLLIE_SCAN_WORKFLOW
+
+Expected GitHub workflow file on main
+-------------------------------------
+.github/workflows/for-hollie-browser-scan.yml
+
+Expected Vercel build
+---------------------
+Framework: Vite
+Build command: npm run build
+Output directory: dist
+Root directory: ./
+
+After deployment
+----------------
+Settings > About should show 8.4.2.
+Then GitHub > Actions should show "For Hollie Browser Scanner".
+Use Run workflow once manually before testing the in-app Scan Retailers button.
