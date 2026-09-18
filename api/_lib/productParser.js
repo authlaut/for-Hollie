@@ -93,15 +93,15 @@ function classifyElementStock(attrs=''){
 }
 
 function isPlausibleSize(v=''){
-  const s=String(v).trim()
-  if(!s || s.length>18) return false
+  const s=String(v).trim().replace(/\b(?:Regular|Reg|Short|Long|Petite|Tall)\b/ig,'').replace(/\s+/g,' ').trim()
+  if(!s || s.length>24) return false
   return /^(?:0{1,2}|[1-6]|[0-9]{1,2}(?:\.[05])?|[0-9]{1,2}[A-H]|[XSML]{1,4}|[1-6]X|[1-6]XL|(?:1X|2X|3X|4X|5X|6X)|(?:10|12|14|16|18|20|22|24|26|28|30)(?:W)?|(?:22|24|26)-(?:24|26|28)|(?:9|9\.5|10|10\.5))$/i.test(s)
 }
 
 function extractHtmlVariants(html,current,regular,color){
   const out=[]; const seen=new Set()
   const add=(size,stock,sku=null)=>{
-    size=decode(String(size||'')).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()
+    size=decode(String(size||'')).replace(/<[^>]+>/g,' ').replace(/\b(?:Regular|Reg|Short|Long|Petite|Tall)\b/ig,'').replace(/\s+/g,' ').trim(); const n=size.match(/\b(22W?|24W?|26W?)\b/i); if(n) size=n[1]; const a=size.match(/\b([1-6](?:X|XL)|3XL)\b/i); if(a) size=a[1].replace(/3XL/i,'3X')
     if(!isPlausibleSize(size)) return
     const key=size.toLowerCase(); if(seen.has(key)) return; seen.add(key)
     out.push({size,price:current,regularPrice:regular,inStock:stock,sku,color})
@@ -183,7 +183,7 @@ export async function fetchProduct(url, {timeoutMs=12000}={}) {
   } finally { clearTimeout(timer) }
 }
 
-export function normalizeSize(v='') { return String(v).trim().toLowerCase().replace(/&nbsp;/g,' ').replace(/^(?:us\s*)?size\s*[:#-]?\s*/,'').replace(/^us\s+/,'').replace(/\s+/g,'').replace(/[–—]/g,'-').replace(/xxxlarge|xxxl|3xl/g,'3x').replace(/\//g,'-') }
+export function normalizeSize(v='') { return String(v).trim().toLowerCase().replace(/&nbsp;/g,' ').replace(/^(?:us\s*)?size\s*[:#-]?\s*/,'').replace(/^us\s+/,'').replace(/\b(?:regular|reg|short|long|petite|tall)\b/g,'').replace(/\((?:22|24|26)[-\/]?(?:24|26|28)\)/g,'').replace(/\s+/g,'').replace(/[–—]/g,'-').replace(/xxxlarge|xxxl|3xl/g,'3x').replace(/\//g,'-') }
 
 export function sizeMatches(candidate, preferred, retailerSlug, category) {
   const c=normalizeSize(candidate), p=normalizeSize(preferred)
@@ -193,7 +193,10 @@ export function sizeMatches(candidate, preferred, retailerSlug, category) {
   if(category==='Bottoms' && p==='24') return /^(24|24w)$/.test(c)
   if(c===p) return true
   if(retailerSlug==='torrid' && (p==='3x'||p==='24-26'||p==='22-24') && (c==='3'||c==='3x')) return category!=='Bottoms'
-  if(retailerSlug==='bloomchic' && (p==='3x'||p==='24-26'||p==='22-24') && /^(3x|22-24|24-26)$/.test(c)) return category!=='Bottoms'
+  if(retailerSlug==='bloomchic' && (p==='3x'||p==='24-26'||p==='22-24') && /^(3x|3xl|22-24|24-26)$/.test(c)) return category!=='Bottoms'
+  if(retailerSlug==='maurices' && p==='24' && /^(24|24w)$/.test(c)) return true
+  if(retailerSlug==='old-navy' && p==='24' && /^(24|24w)$/.test(c)) return true
+  if(retailerSlug==='old-navy' && /^(3x|24-26)$/.test(p) && /^(3x|xxxl)$/.test(c)) return category!=='Bottoms'
   // Universal Standard's published conversion maps conventional 24 to L and 26 to XL.
   if(retailerSlug==='universal-standard' && p==='24' && /^(24|l)$/.test(c)) return true
   if(retailerSlug==='universal-standard' && /^(3x|24-26(?:\/torrid3)?)$/.test(p) && /^(l|xl)$/.test(c)) return true

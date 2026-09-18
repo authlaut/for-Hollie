@@ -2,7 +2,7 @@ import { fetchProduct, sizeMatches, inferCategory } from './productParser.js'
 import { retailerVariants } from './retailerAdapters.js'
 
 function xmlLocs(xml){return [...xml.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)].map(m=>m[1].replace(/&amp;/g,'&'))}
-function productish(url){return /\/product\/|\/p\/|\/products?\/|\.html(?:\?|$)|\/item\/|product\.do\?[^#]*\bpid=/i.test(url) && !/blog|help|store\/locator|account|cart/i.test(url)}
+function productish(url){return /\/product\/|\/p\/|\/products?\/|\.html(?:\?|$)|\/item\/|\/dp\/|product\.do\?[^#]*\bpid=/i.test(url) && !/blog|help|store\/locator|account|cart/i.test(url)}
 function saleish(url){return /sale|clearance|outlet|last-chance|deals|markdown/i.test(url)}
 function discoveryRelevant(retailer,url){
   const s=String(url||'').toLowerCase()
@@ -18,7 +18,15 @@ function discoveryRelevant(retailer,url){
 async function textFetch(url,timeout=9000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const r=await fetch(url,{signal:c.signal,redirect:'follow',headers:{'user-agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152 Safari/537.36','accept':'text/html,application/xml,text/xml;q=0.9,*/*;q=0.8','accept-language':'en-US,en;q=0.9'}});if(!r.ok)throw new Error(`${r.status}`);return await r.text()}finally{clearTimeout(t)}}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 function normalizeRetailerUrl(retailer,url){try{const u=new URL(url);u.hash='';if(retailer.slug==='glamorise')u.pathname=u.pathname.replace(/^\/en-ca(?=\/)/i,'');for(const k of [...u.searchParams.keys()])if(/^(utm_|fbclid|gclid|variant$)/i.test(k))u.searchParams.delete(k);return u.href}catch{return url}}
-function linksFromHtml(html,base){const out=[];for(const m of html.matchAll(/<a\b[^>]+href=["']([^"'#]+)["']/gi)){try{const u=new URL(m[1].replace(/&amp;/g,'&'),base);if(/^https?:$/.test(u.protocol))out.push(u.href)}catch{}}return [...new Set(out)]}
+function linksFromHtml(html,base){
+  const out=[]
+  const add=raw=>{try{const cleaned=String(raw||'').replace(/\\u002F/gi,'/').replace(/\\\//g,'/').replace(/&amp;/g,'&');const u=new URL(cleaned,base);if(/^https?:$/.test(u.protocol))out.push(u.href)}catch{}}
+  for(const m of html.matchAll(/<a\b[^>]+href=["']([^"'#]+)["']/gi))add(m[1])
+  // Several large retailers render product cards from hydrated JSON rather than anchors.
+  for(const m of html.matchAll(/["'](?:url|pdpUrl|productUrl|canonicalUrl)["']\s*:\s*["']([^"']+)["']/gi))add(m[1])
+  for(const m of html.matchAll(/https?:\?\/\?\/[^"'<>\s]+/gi))add(m[0])
+  return [...new Set(out)]
+}
 
 const SALE_PATHS={
   'torrid':['/sale/clearance/','/sale/','/shop-all/'],
@@ -32,6 +40,17 @@ const SALE_PATHS={
   'jcpenney':['/g/clearance','/g/sale'],
   'bloomchic':['/collections/sale','/collections/clearance'],
   'glamorise':['/collections/sale','/collections/clearance']
+}
+
+
+const SHOP_PATHS={
+  // Priority pages intentionally emphasize Hollie's current jeans + cardigan gaps.
+  'torrid':['/shop/knit-cardigan','/clothing/jeans/','/jeans/','/clothing/tops/'],
+  'lane-bryant':['/clothing/jeans/24','/clothing/jeans','/clothing/sweaters-cardigans','/clothing/tops'],
+  'jcpenney':['/g/women?product_type=jeans&womens_size_range=plus','/g/women?product_type=cardigans&womens_size_range=plus','/g/women?product_type=sweaters&womens_size_range=plus'],
+  'old-navy':['/browse/category.do?cid=85729','/browse/category.do?cid=20408'],
+  'maurices':['/category/plus-size/plus-size-jeans','/category/plus-size/plus-size-cardigans'],
+  'bloomchic':['/collections/plus-size-jeans','/collections/cardigans']
 }
 
 async function discoverFromSalePages(retailer,max=140){
@@ -53,6 +72,21 @@ async function discoverFromSalePages(retailer,max=140){
   return [...new Set(candidates)].slice(0,max)
 }
 
+
+async function discoverFromShopPages(retailer,max=180){
+  const base=new URL(retailer.base_url); const out=[]
+  for(const path of SHOP_PATHS[retailer.slug]||[]){
+    if(out.length>=max)break
+    try{
+      const page=new URL(path,base).href, html=await textFetch(page,10000)
+      for(const u of linksFromHtml(html,page)){
+        if(productish(u)&&discoveryRelevant(retailer,u)){out.push(u);if(out.length>=max)break}
+      }
+    }catch{}
+  }
+  return [...new Set(out)].slice(0,max)
+}
+
 async function discoverFromSitemaps(retailer,max=500){
   const base=new URL(retailer.base_url); let sitemapUrls=[]
   try{const robots=await textFetch(new URL('/robots.txt',base).href,6000);sitemapUrls=[...robots.matchAll(/^sitemap:\s*(.+)$/gim)].map(m=>m[1].trim())}catch{}
@@ -63,9 +97,13 @@ async function discoverFromSitemaps(retailer,max=500){
 }
 
 export async function discoverRetailerUrls(retailer,max=260){
-  const [sale,sitemap]=await Promise.all([discoverFromSalePages(retailer,Math.min(160,max)),discoverFromSitemaps(retailer,Math.min(600,max*3))])
-  // Sale-page discoveries are intentionally first; sitemap entries provide breadth/fallback.
-  return [...new Set([...sale,...sitemap].map(u=>normalizeRetailerUrl(retailer,u)))].slice(0,max)
+  const [priority,sale,sitemap]=await Promise.all([
+    discoverFromShopPages(retailer,Math.min(220,max)),
+    discoverFromSalePages(retailer,Math.min(160,max)),
+    discoverFromSitemaps(retailer,Math.min(600,max*3))
+  ])
+  // Priority category pages first (jeans/layers), then promotions, then sitemap breadth.
+  return [...new Set([...priority,...sale,...sitemap].map(u=>normalizeRetailerUrl(retailer,u)))].slice(0,max)
 }
 
 function discountPct(sale,regular){return sale&&regular&&regular>sale?Math.round((1-sale/regular)*10000)/100:0}

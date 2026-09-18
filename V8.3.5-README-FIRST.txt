@@ -1,0 +1,16 @@
+FOR HOLLIE v8.3.5 — RETAILER ADAPTER REPAIR
+
+Built from v8.3.4. No Supabase migration required.
+
+Changes:
+- Keeps v8.3.4 server-owned/background scan architecture.
+- Adds priority category discovery paths for Torrid, Lane Bryant, JCPenney, Old Navy, Maurices, and BloomChic, with jeans/cardigans first.
+- Extracts product URLs from hydrated JSON in addition to normal anchor tags.
+- Broadens product URL recognition.
+- Improves size parsing for 24W Regular/Short/Long and 3XL / grouped plus-size labels.
+- Improves selectable-size control detection for Maurices/Old Navy/BloomChic style UIs.
+- Fixes Scanner Health so active retailers show Scanning instead of Problem.
+- Keeps exact size 24 requirement for bottoms and men's/provenance guards.
+- Kohl's remains marked Blocked when the retailer returns HTTP 403; the app does not pretend that is healthy.
+
+Deploy the full ZIP to GitHub/Vercel. Confirm Settings > About says 8.3.5, then run one scan and review Scanner Health.
